@@ -1,0 +1,349 @@
+"""
+Buyer Repository.
+
+Query-specific extensions for ``buyers`` plus its child tables
+(``buyer_emails``, ``buyer_contacts``, and the category/sub-category link
+tables). Mirrors :mod:`app.suppliers.repository`'s structure; the
+duplicate-detection query differs because the two documents specify
+different matching criteria (Buyer: Company Name + Calling Number +
+WhatsApp Number; Supplier: Company Name + City).
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+from sqlalchemy import Select, and_, exists, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.buyers.models import Buyer, BuyerCategoryLink, BuyerContact, BuyerEmail, BuyerSubCategoryLink
+from app.common.base_repository import BaseRepository
+from app.masters.countries.models import Country
+from app.masters.product_categories.models import ProductCategory
+from app.masters.product_sub_categories.models import ProductSubCategory
+
+
+class BuyerRepository(BaseRepository[Buyer]):
+    """Repository for buyer profile rows."""
+
+    searchable_fields = (
+        "company_name",
+        "buyer_type",
+        "city",
+        "address",
+        "contact_full_name",
+        "contact_designation",
+        "contact_calling_number",
+        "contact_whatsapp_number",
+        "tax_id_number",
+        "website",
+        "product_range",
+        "potential_reason",
+        "currently_buying_from",
+        "overall_remarks",
+    )
+    sortable_fields = ("company_name", "created_at", "updated_at", "buyer_grade", "current_status")
+    filterable_fields = (
+        "country_id",
+        "buyer_type",
+        "buyer_grade",
+        "current_status",
+        "potential",
+        "is_active",
+    )
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind to a DB session, operating on the ``Buyer`` model."""
+        super().__init__(session, Buyer)
+
+    def _apply_search(self, stmt: Select, term: str | None) -> Select:
+        """
+        Comprehensive search matching anything visible on the buyer row / details:
+        company name, buyer type, country (name/code), city, address, contact name/phone/email,
+        tax ID, websites, product range, remarks, and linked categories/sub-categories.
+        """
+        if not term:
+            return stmt
+        clean = term.strip()
+        if not clean:
+            return stmt
+        pattern = f"%{clean}%"
+
+        direct_columns = [
+            Buyer.company_name,
+            Buyer.buyer_type,
+            Buyer.city,
+            Buyer.address,
+            Buyer.contact_full_name,
+            Buyer.contact_designation,
+            Buyer.contact_calling_number,
+            Buyer.contact_whatsapp_number,
+            Buyer.tax_id_number,
+            Buyer.website,
+            Buyer.product_range,
+            Buyer.potential_reason,
+            Buyer.currently_buying_from,
+            Buyer.overall_remarks,
+        ]
+        conditions: list[Any] = [col.ilike(pattern) for col in direct_columns]
+
+        # 1. Country Name / Code
+        conditions.append(
+            exists().where(
+                Country.id == Buyer.country_id,
+                or_(Country.name.ilike(pattern), Country.code.ilike(pattern)),
+            )
+        )
+
+        # 2. Child Emails
+        conditions.append(
+            exists().where(
+                BuyerEmail.buyer_id == Buyer.id,
+                BuyerEmail.email.ilike(pattern),
+            )
+        )
+
+        # 3. Child Contacts (name, phone, email, designation)
+        conditions.append(
+            exists().where(
+                BuyerContact.buyer_id == Buyer.id,
+                or_(
+                    BuyerContact.person_name.ilike(pattern),
+                    BuyerContact.calling_number.ilike(pattern),
+                    BuyerContact.whatsapp_number.ilike(pattern),
+                    BuyerContact.email.ilike(pattern),
+                    BuyerContact.designation.ilike(pattern),
+                ),
+            )
+        )
+
+        # 4. Linked Product Categories
+        conditions.append(
+            exists().where(
+                BuyerCategoryLink.buyer_id == Buyer.id,
+                ProductCategory.id == BuyerCategoryLink.category_id,
+                or_(ProductCategory.name.ilike(pattern), ProductCategory.code.ilike(pattern)),
+            )
+        )
+
+        # 5. Linked Product Sub Categories
+        conditions.append(
+            exists().where(
+                BuyerSubCategoryLink.buyer_id == Buyer.id,
+                ProductSubCategory.id == BuyerSubCategoryLink.sub_category_id,
+                or_(ProductSubCategory.name.ilike(pattern), ProductSubCategory.code.ilike(pattern)),
+            )
+        )
+
+        return stmt.where(or_(*conditions))
+
+    async def find_duplicate(
+        self,
+        *,
+        company_name: str,
+        calling_number: str | None = None,
+        whatsapp_number: str | None = None,
+        exclude_id: uuid.UUID | None = None,
+    ) -> tuple[Buyer, str] | None:
+        """
+        Return the first non-deleted buyer matching the document's duplicate rule:
+        Note 66: "For detecting Duplication, Criteria is if matches with
+        Company Name, Calling Number and Whatsapp Number. (Currently showing 'it exists'
+        only for calling number, but also to do same for whatsapp number."
+
+        Checks:
+        1. Exact case-insensitive Company Name match.
+        2. Calling Number match (against either calling or WhatsApp number of another buyer).
+        3. WhatsApp Number match (against either WhatsApp or calling number of another buyer).
+        """
+        import re
+
+        clean_call = re.sub(r"\D", "", calling_number) if calling_number else ""
+        clean_wa = re.sub(r"\D", "", whatsapp_number) if whatsapp_number else ""
+
+        # When no phone number is provided at all, find_duplicate returns None unconditionally.
+        if not clean_call and not clean_wa:
+            return None
+
+        clean_name = company_name.strip()
+        if clean_name:
+            phone_conds = []
+            if clean_call and len(clean_call) >= 6:
+                phone_conds.append(
+                    or_(
+                        Buyer.contact_calling_number == calling_number,
+                        Buyer.contact_whatsapp_number == calling_number,
+                        func.regexp_replace(func.coalesce(Buyer.contact_calling_number, ""), r"\D", "", "g") == clean_call,
+                        func.regexp_replace(func.coalesce(Buyer.contact_whatsapp_number, ""), r"\D", "", "g") == clean_call,
+                    )
+                )
+            if clean_wa and len(clean_wa) >= 6:
+                phone_conds.append(
+                    or_(
+                        Buyer.contact_whatsapp_number == whatsapp_number,
+                        Buyer.contact_calling_number == whatsapp_number,
+                        func.regexp_replace(func.coalesce(Buyer.contact_whatsapp_number, ""), r"\D", "", "g") == clean_wa,
+                        func.regexp_replace(func.coalesce(Buyer.contact_calling_number, ""), r"\D", "", "g") == clean_wa,
+                    )
+                )
+            if phone_conds:
+                stmt = select(Buyer).where(
+                    func.lower(func.trim(Buyer.company_name)) == clean_name.lower(),
+                    or_(*phone_conds),
+                )
+                if exclude_id is not None:
+                    stmt = stmt.where(Buyer.id != exclude_id)
+                result = await self.session.execute(stmt)
+                b = result.scalars().first()
+                if b is not None:
+                    return b, f"Buyer '{clean_name}' already exists with matching phone number"
+
+        if clean_call and len(clean_call) >= 6:
+            stmt = select(Buyer).where(
+                or_(
+                    Buyer.contact_calling_number == calling_number,
+                    Buyer.contact_whatsapp_number == calling_number,
+                    func.regexp_replace(func.coalesce(Buyer.contact_calling_number, ""), r"\D", "", "g") == clean_call,
+                    func.regexp_replace(func.coalesce(Buyer.contact_whatsapp_number, ""), r"\D", "", "g") == clean_call,
+                )
+            )
+            if exclude_id is not None:
+                stmt = stmt.where(Buyer.id != exclude_id)
+            result = await self.session.execute(stmt)
+            b = result.scalars().first()
+            if b is not None:
+                return b, f"Calling number '{calling_number}' already exists in Buyer Master (used by '{b.company_name}')"
+
+        if clean_wa and len(clean_wa) >= 6:
+            stmt = select(Buyer).where(
+                or_(
+                    Buyer.contact_whatsapp_number == whatsapp_number,
+                    Buyer.contact_calling_number == whatsapp_number,
+                    func.regexp_replace(func.coalesce(Buyer.contact_whatsapp_number, ""), r"\D", "", "g") == clean_wa,
+                    func.regexp_replace(func.coalesce(Buyer.contact_calling_number, ""), r"\D", "", "g") == clean_wa,
+                )
+            )
+            if exclude_id is not None:
+                stmt = stmt.where(Buyer.id != exclude_id)
+            result = await self.session.execute(stmt)
+            b = result.scalars().first()
+            if b is not None:
+                return b, f"WhatsApp number '{whatsapp_number}' already exists in Buyer Master (used by '{b.company_name}')"
+
+        return None
+
+    async def get_with_relations(self, buyer_id: uuid.UUID) -> Buyer | None:
+        """Fetch a buyer by ID with its emails/contacts/category links eagerly loaded (all lazy='selectin')."""
+        return await self.get_by_id(buyer_id)
+
+    async def get_any_by_company_name(
+        self, company_name: str, *, exclude_id: uuid.UUID | None = None
+    ) -> Buyer | None:
+        """Fetch the buyer matching this Company Name regardless of soft-delete state."""
+        stmt = select(Buyer).where(func.lower(func.trim(Buyer.company_name)) == company_name.strip().lower())
+        if exclude_id is not None:
+            stmt = stmt.where(Buyer.id != exclude_id)
+        result = await self.session.execute(stmt)
+        return result.scalars().first()
+
+    async def list_all(self) -> list[Buyer]:
+        """Return every non-deleted buyer, ordered by company name."""
+        stmt = self._base_select().order_by(Buyer.company_name)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().unique().all())
+
+    async def list_all_category_ids(self, buyer_id: uuid.UUID) -> list[uuid.UUID]:
+        """Return every product-category ID linked to a buyer."""
+        stmt = select(BuyerCategoryLink.category_id).where(BuyerCategoryLink.buyer_id == buyer_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list_all_sub_category_ids(self, buyer_id: uuid.UUID) -> list[uuid.UUID]:
+        """Return every product-sub-category ID linked to a buyer."""
+        stmt = select(BuyerSubCategoryLink.sub_category_id).where(BuyerSubCategoryLink.buyer_id == buyer_id)
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def replace_category_links(self, buyer_id: uuid.UUID, category_ids: list[uuid.UUID]) -> None:
+        """Replace a buyer's product-category links with exactly the given set."""
+        existing = await self.session.execute(select(BuyerCategoryLink).where(BuyerCategoryLink.buyer_id == buyer_id))
+        for link in existing.scalars().all():
+            await self.session.delete(link)
+        await self.session.flush()
+        seen: set[uuid.UUID] = set()
+        for category_id in category_ids:
+            if category_id in seen:
+                continue
+            seen.add(category_id)
+            self.session.add(BuyerCategoryLink(buyer_id=buyer_id, category_id=category_id))
+        await self.session.flush()
+
+    async def replace_sub_category_links(self, buyer_id: uuid.UUID, sub_category_ids: list[uuid.UUID]) -> None:
+        """Replace a buyer's product-sub-category links with exactly the given set."""
+        existing = await self.session.execute(
+            select(BuyerSubCategoryLink).where(BuyerSubCategoryLink.buyer_id == buyer_id)
+        )
+        for link in existing.scalars().all():
+            await self.session.delete(link)
+        await self.session.flush()
+        seen: set[uuid.UUID] = set()
+        for sub_category_id in sub_category_ids:
+            if sub_category_id in seen:
+                continue
+            seen.add(sub_category_id)
+            self.session.add(BuyerSubCategoryLink(buyer_id=buyer_id, sub_category_id=sub_category_id))
+        await self.session.flush()
+
+    async def replace_emails(self, buyer_id: uuid.UUID, emails: list[str]) -> None:
+        """Replace a buyer's email addresses with exactly the given list."""
+        existing = await self.session.execute(select(BuyerEmail).where(BuyerEmail.buyer_id == buyer_id))
+        for email_row in existing.scalars().all():
+            await self.session.delete(email_row)
+        await self.session.flush()
+        seen: set[str] = set()
+        for email in emails:
+            normalized = email.strip().lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            self.session.add(BuyerEmail(buyer_id=buyer_id, email=email.strip()))
+        await self.session.flush()
+
+    def apply_category_filter(self, stmt: Select, category_id: uuid.UUID) -> Select:
+        """Restrict a buyer SELECT to buyers linked to the given product category."""
+        return stmt.where(
+            exists().where(and_(BuyerCategoryLink.buyer_id == Buyer.id, BuyerCategoryLink.category_id == category_id))
+        )
+
+    def apply_sub_category_filter(self, stmt: Select, sub_category_id: uuid.UUID) -> Select:
+        """Restrict a buyer SELECT to buyers linked to the given product sub-category."""
+        return stmt.where(
+            exists().where(
+                and_(BuyerSubCategoryLink.buyer_id == Buyer.id, BuyerSubCategoryLink.sub_category_id == sub_category_id)
+            )
+        )
+
+
+class BuyerContactRepository(BaseRepository[BuyerContact]):
+    """Repository for buyer contact-person rows."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Bind to a DB session, operating on the ``BuyerContact`` model."""
+        super().__init__(session, BuyerContact)
+
+    async def list_for_buyer(self, buyer_id: uuid.UUID) -> list[BuyerContact]:
+        """Return every non-deleted contact for a buyer, primary contact first."""
+        stmt = (
+            self._base_select()
+            .where(BuyerContact.buyer_id == buyer_id)
+            .order_by(BuyerContact.is_primary.desc(), BuyerContact.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_primary_contact(self, buyer_id: uuid.UUID) -> BuyerContact | None:
+        """Return the auto-created primary contact for a buyer, if any."""
+        stmt = self._base_select().where(BuyerContact.buyer_id == buyer_id, BuyerContact.is_primary.is_(True))
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()

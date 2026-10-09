@@ -1,0 +1,180 @@
+"""Company List Service Layer."""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any, Sequence
+
+from app.cache.manager import CacheManager
+from app.common.list_query import ListQueryParams
+from app.core.constants import RecordStatus
+from app.core.exceptions import ConflictException, NotFoundException
+from app.masters.company_list.constants import DROPDOWN_CACHE_NAME, EXPORT_HEADERS
+from app.masters.company_list.models import MasterCompany
+from app.masters.company_list.repository import CompanyRepository
+from app.masters.company_list.validators import validate_company_row
+from app.masters.import_export import (
+    ImportSummary,
+    build_csv_export,
+    build_excel_export,
+    model_to_dict,
+    parse_rows_from_file,
+    run_import,
+    update_record_fields,
+)
+
+
+class CompanyService:
+    """Service layer orchestrating Company List operations."""
+
+    not_found_message = "Company not found."
+
+    def __init__(self, repository: CompanyRepository, cache_manager: CacheManager) -> None:
+        self.repository = repository
+        self.cache_manager = cache_manager
+
+    async def get_by_id_or_raise(self, company_id: uuid.UUID) -> MasterCompany:
+        """Fetch a company by ID or raise NotFoundException."""
+        item = await self.repository.get_by_id(company_id)
+        if not item:
+            raise NotFoundException(self.not_found_message)
+        return item
+
+    async def list_paginated(self, query: ListQueryParams) -> tuple[list[MasterCompany], int]:
+        """Return a page of companies matching query parameters."""
+        return await self.repository.paginated_list(query)
+
+    async def list_all_dropdown(self) -> Sequence[MasterCompany]:
+        """Return all companies for dropdown selection."""
+        cached = await self.cache_manager.get_dropdown(DROPDOWN_CACHE_NAME)
+        if cached is not None:
+            return cached
+        companies = await self.repository.list_all()
+        await self.cache_manager.set_dropdown(DROPDOWN_CACHE_NAME, list(companies))
+        return companies
+
+    async def _invalidate_cache(self) -> None:
+        """Invalidate cache on mutation."""
+        await self.cache_manager.invalidate_dropdown(DROPDOWN_CACHE_NAME)
+
+    async def create(self, **field_values: Any) -> MasterCompany:
+        """Create a new company."""
+        name = field_values.get("name")
+        code = field_values.get("code")
+
+        from app.common.trash_conflict import check_trash_or_duplicate, code_exists_anywhere
+
+        if not code and name:
+            clean_code = "".join(c.upper() for c in name if c.isalnum())[:10]
+            code = f"CMP-{clean_code}" if clean_code else "CMP-GEN"
+            counter = 1
+            base_code = code
+            while await code_exists_anywhere(self.repository.session, MasterCompany, code):
+                code = f"{base_code}{counter}"
+                counter += 1
+            field_values["code"] = code
+
+        await check_trash_or_duplicate(
+            self.repository.session,
+            MasterCompany,
+            entity_type="Company",
+            name=name,
+            code=code,
+        )
+
+        company = await self.repository.create(**field_values)
+        await self._invalidate_cache()
+        return company
+
+    async def update(self, company_id: uuid.UUID, **field_values: Any) -> MasterCompany:
+        """Update an existing company."""
+        company = await self.get_by_id_or_raise(company_id)
+        name = field_values.get("name")
+        code = field_values.get("code")
+        from app.common.trash_conflict import check_trash_or_duplicate
+
+        await check_trash_or_duplicate(
+            self.repository.session,
+            MasterCompany,
+            entity_type="Company",
+            name=name,
+            code=code,
+            exclude_id=company_id,
+        )
+
+        changes = {k: v for k, v in field_values.items() if v is not None}
+        if changes:
+            await self.repository.update(company, **changes)
+        await self._invalidate_cache()
+        return company
+
+    async def delete(self, company_id: uuid.UUID) -> None:
+        """Delete a company record."""
+        company = await self.get_by_id_or_raise(company_id)
+        await self.repository.delete(company)
+        await self._invalidate_cache()
+
+    async def activate(self, company_id: uuid.UUID) -> MasterCompany:
+        """Activate a company."""
+        return await self.update(company_id, status=RecordStatus.ACTIVE)
+
+    async def deactivate(self, company_id: uuid.UUID) -> MasterCompany:
+        """Deactivate a company."""
+        return await self.update(company_id, status=RecordStatus.INACTIVE)
+
+    # ------------------------------------------------------------------
+    # Import / Export
+    # ------------------------------------------------------------------
+
+    async def import_file(self, filename: str, raw_bytes: bytes, *, update_existing: bool = False) -> ImportSummary:
+        """Validate and import companies from an uploaded CSV/XLSX file."""
+        rows = parse_rows_from_file(filename, raw_bytes)
+
+        async def _create(field_values: dict[str, Any]) -> MasterCompany | tuple[str, MasterCompany]:
+            name = field_values["name"]
+            code = field_values.get("code")
+
+            existing_by_name = await self.repository.get_by_name(name)
+            existing_by_code = await self.repository.get_by_code(code) if code else None
+            existing = existing_by_name if existing_by_name is not None else existing_by_code
+
+            if update_existing and existing is not None:
+                has_changes, changes = update_record_fields(existing, field_values)
+                if has_changes:
+                    await self.repository.update(existing, **changes)
+                    return ("updated", existing)
+                return ("unchanged", existing)
+
+            if existing_by_name is not None:
+                raise ConflictException(
+                    f"Company name {name!r} already exists.", details={"existing": model_to_dict(existing_by_name)}
+                )
+            if code:
+                if existing_by_code is not None:
+                    raise ConflictException(
+                        f"Company code {code!r} already exists.",
+                        details={"existing": model_to_dict(existing_by_code)},
+                    )
+            return await self.create(**field_values)
+
+        summary = await run_import(rows, row_validator=validate_company_row, row_creator=_create, dedupe_keys=("name",))
+        await self._invalidate_cache()
+        return summary
+
+    async def export_file(self, file_format: str) -> bytes:
+        """Export every company to CSV or XLSX bytes."""
+        companies = await self.repository.list_all()
+        rows = [
+            {
+                "Sr. No.": idx + 1,
+                "Organization Name": c.name,
+                "Code": c.code or "",
+                "Operating Branches": len(c.branches) if c.branches else 0,
+                "Description": c.description or "",
+                "Status": c.status.value.capitalize(),
+            }
+            for idx, c in enumerate(companies)
+        ]
+        if file_format == "csv":
+            return build_csv_export(EXPORT_HEADERS, rows)
+        return build_excel_export(EXPORT_HEADERS, rows, sheet_title="Organization List")

@@ -1,0 +1,49 @@
+# Environment files
+.env
+.env*
+*.env
+*.env*
+!.env.example
+!.env.defaults
+
+# Dependencies & Build
+node_modules/
+dist/
+dist-ssr/
+*.local
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.venv/
+venv/
+*.pyc
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Uploads
+backend/uploads/
+uploads/
+
+# Binaries & Temporary Office lock files
+*.exe
+~$*
+.~lock.*
+
+# Local scratch scripts and artifacts
+scratch/
+ 
+# Backups and standalone git backup
+backups/
+.git_standalone_backup/
+

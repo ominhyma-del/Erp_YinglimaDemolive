@@ -1,0 +1,325 @@
+/**
+ * Unified Ecosystem Session Management for Yinglima ERP.
+ *
+ * Provides synchronized Session ID, Single Sign-On (SSO), and
+ * Global Single Sign-Out (SLO) across ERP_Main, Yinglima ERP, Inhyma ERP,
+ * and any future attached ERP instances.
+ */
+
+export interface EcosystemSessionData {
+  session_id: string;
+  email: string;
+  display_name: string;
+  role: "super_admin" | "admin" | "global_user";
+  user_type: "platform_admin" | "global_user";
+  allowed_erps: string[]; // ["*"] or list of authorized erp keys
+  created_at?: string;
+  expires_at?: string;
+  revoked_at?: string | null;
+  active?: boolean;
+}
+
+const COOKIE_NAME = "ihm_ecosystem_session";
+const LOCAL_STORAGE_KEY = "ihm_ecosystem_session";
+const BROADCAST_CHANNEL_NAME = "ihm_ecosystem_auth";
+const getCentralAuthApi = (): string => {
+  if (import.meta.env.VITE_CENTRAL_AUTH_API) {
+    return import.meta.env.VITE_CENTRAL_AUTH_API;
+  }
+  if (import.meta.env.VITE_CONTROL_PLANE_API_URL) {
+    return `${import.meta.env.VITE_CONTROL_PLANE_API_URL.replace(/\/+$/, "")}/global/ecosystem-session`;
+  }
+  if (typeof window !== "undefined" && window.location.hostname) {
+    const host = window.location.hostname;
+    return `http://${host}:8000/api/v1/global/ecosystem-session`;
+  }
+  return "http://127.0.0.1:8000/api/v1/global/ecosystem-session";
+};
+export const CENTRAL_AUTH_API = getCentralAuthApi();
+
+/* ------------------------------------------------------------------ */
+/* Cookie & Storage Helpers (Shared across localhost ports)            */
+/* ------------------------------------------------------------------ */
+
+export function setEcosystemCookie(session: EcosystemSessionData): void {
+  if (typeof document === "undefined") return;
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem("ihm_explicit_logout");
+    }
+    const serialized = encodeURIComponent(JSON.stringify(session));
+    const domainAttr = import.meta.env.VITE_COOKIE_DOMAIN ? `; domain=${import.meta.env.VITE_COOKIE_DOMAIN}` : "";
+    document.cookie = `${COOKIE_NAME}=${serialized}; path=/; max-age=604800; SameSite=Lax${domainAttr}`;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(session));
+  } catch (err) {
+    console.warn("Could not write ecosystem session cookie:", err);
+  }
+}
+
+export function getEcosystemCookie(): EcosystemSessionData | null {
+  if (typeof document === "undefined") return null;
+  try {
+    if (typeof sessionStorage !== "undefined" && sessionStorage.getItem("ihm_explicit_logout") === "true") {
+      return null;
+    }
+
+    // 1. Try reading cookie
+    const match = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith(`${COOKIE_NAME}=`));
+    if (match) {
+      const val = match.split("=")[1];
+      if (val) {
+        return JSON.parse(decodeURIComponent(val));
+      }
+    }
+
+    // 2. Fallback to localStorage
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (err) {
+    console.warn("Could not read ecosystem session cookie:", err);
+  }
+  return null;
+}
+
+export function clearEcosystemCookie(): void {
+  if (typeof document === "undefined") return;
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.setItem("ihm_explicit_logout", "true");
+    }
+    document.cookie = `${COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    document.cookie = `${COOKIE_NAME}=; path=/; domain=localhost; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    if (import.meta.env.VITE_COOKIE_DOMAIN) {
+      document.cookie = `${COOKIE_NAME}=; path=/; domain=${import.meta.env.VITE_COOKIE_DOMAIN}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    }
+    if (typeof window !== "undefined" && window.location.hostname && window.location.hostname !== "localhost") {
+      document.cookie = `${COOKIE_NAME}=; path=/; domain=${window.location.hostname}; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+    }
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+  } catch (err) {
+    console.warn("Could not clear ecosystem session cookie:", err);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Real-Time Multi-Tab Synchronization via BroadcastChannel            */
+/* ------------------------------------------------------------------ */
+
+let authChannel: BroadcastChannel | null = null;
+
+function getAuthChannel(): BroadcastChannel | null {
+  if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
+    return null;
+  }
+  if (!authChannel) {
+    authChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+  }
+  return authChannel;
+}
+
+export function broadcastEcosystemEvent(event: { type: "LOGIN" | "LOGOUT"; session_id?: string; session?: EcosystemSessionData }): void {
+  try {
+    const ch = getAuthChannel();
+    if (ch) {
+      ch.postMessage(event);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Central API Interaction                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Centrally registers or syncs an ecosystem session with ERP_Main.
+ */
+export async function establishCentralEcosystemSession(params: {
+  email?: string;
+  password?: string;
+  source_erp: string;
+  existing_session_id?: string;
+}): Promise<EcosystemSessionData | null> {
+  try {
+    const res = await fetch(`${CENTRAL_AUTH_API}/establish`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+
+    if (!res.ok) return null;
+    const body = await res.json();
+    const session: EcosystemSessionData = body.data || body;
+
+    if (session?.session_id) {
+      setEcosystemCookie(session);
+      broadcastEcosystemEvent({ type: "LOGIN", session });
+      return session;
+    }
+  } catch (err) {
+    console.warn("Could not establish central ecosystem session:", err);
+  }
+  return null;
+}
+
+/**
+ * Validates whether an ecosystem session is currently active or revoked.
+ */
+export async function verifyCentralEcosystemSession(sessionId: string): Promise<{ active: boolean; revoked?: boolean; session?: EcosystemSessionData }> {
+  // Local standalone sessions (ihm-sess-*) are strictly internal to this ERP
+  // and must NEVER be queried against ERP_Main or considered revoked.
+  if (!sessionId || sessionId.startsWith("ihm-sess-")) {
+    return { active: true, revoked: false };
+  }
+
+  try {
+    const res = await fetch(`${CENTRAL_AUTH_API}/${sessionId}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      // Offline, network hiccup, or non-200 from central server must never kill an active session
+      return { active: true, revoked: false };
+    }
+
+    const body = await res.json();
+    const data = body.data || body;
+    // ONLY revoke if the central control plane explicitly confirmed revocation
+    if (data?.revoked === true) {
+      return { active: false, revoked: true };
+    }
+    return { active: true, session: data, revoked: false };
+  } catch {
+    // ERP_Main offline / network failure -> maintain current local session
+    return { active: true, revoked: false };
+  }
+}
+
+/**
+ * Global Single Sign-Out: Revokes session centrally, clears shared cookies,
+ * and notifies all open tabs in all ERP applications.
+ */
+export async function globalEcosystemLogout(sessionId?: string): Promise<void> {
+  if (typeof window !== "undefined" && typeof sessionStorage !== "undefined") {
+    sessionStorage.setItem("ihm_explicit_logout", "true");
+  }
+
+  const current = getEcosystemCookie();
+  const idToRevoke = sessionId || current?.session_id;
+
+  clearEcosystemCookie();
+
+  // Notify all open tabs across all ports immediately (0ms perceived latency)
+  broadcastEcosystemEvent({ type: "LOGOUT", session_id: idToRevoke });
+
+  if (idToRevoke && !idToRevoke.startsWith("ihm-sess-")) {
+    try {
+      await fetch(`${CENTRAL_AUTH_API}/${idToRevoke}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+      });
+    } catch {
+      /* best effort background revoke */
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Real-Time Session Watcher (Detects Remote Logout Across ERPs)      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Module-level guard against duplicate watchers.
+ */
+let activeWatcherCleanup: (() => void) | null = null;
+
+export function initEcosystemSessionWatcher(
+  currentSessionId: string | null,
+  onSessionRevoked: () => void
+): () => void {
+  if (typeof window === "undefined") return () => { };
+
+  // Tear down any previously-registered watcher first so calling this
+  // again (for any reason) can never leave a prior interval/listener set
+  // running alongside the new one.
+  if (activeWatcherCleanup) {
+    activeWatcherCleanup();
+    activeWatcherCleanup = null;
+  }
+
+  // Active session exists: clear any stale logout flags
+  if (typeof sessionStorage !== "undefined") {
+    sessionStorage.removeItem("ihm_explicit_logout");
+  }
+
+  const ch = getAuthChannel();
+
+  const handleMessage = (msg: MessageEvent) => {
+    if (msg.data?.type === "LOGOUT") {
+      const targetSessionId = msg.data?.session_id;
+      // Only revoke if global or targeting this exact session
+      if (!targetSessionId || !currentSessionId || targetSessionId === currentSessionId) {
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem("ihm_explicit_logout", "true");
+        }
+        clearEcosystemCookie();
+        onSessionRevoked();
+      }
+    }
+  };
+
+  if (ch) {
+    ch.addEventListener("message", handleMessage);
+  }
+
+  const handleFocus = async () => {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem("ihm_explicit_logout");
+    }
+
+    // Only verify central ecosystem session if one was established (not local standalone)
+    if (currentSessionId && !currentSessionId.startsWith("ihm-sess-")) {
+      const res = await verifyCentralEcosystemSession(currentSessionId);
+      if (res.revoked === true) {
+        clearEcosystemCookie();
+        onSessionRevoked();
+      }
+    }
+  };
+
+  window.addEventListener("focus", handleFocus);
+
+  const intervalId = setInterval(async () => {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem("ihm_explicit_logout");
+    }
+
+    if (currentSessionId && !currentSessionId.startsWith("ihm-sess-")) {
+      const res = await verifyCentralEcosystemSession(currentSessionId);
+      if (res.revoked === true) {
+        clearEcosystemCookie();
+        onSessionRevoked();
+      }
+    }
+  }, 15000);
+
+  const cleanup = () => {
+    if (ch) {
+      ch.removeEventListener("message", handleMessage);
+    }
+    window.removeEventListener("focus", handleFocus);
+    clearInterval(intervalId);
+    if (activeWatcherCleanup === cleanup) {
+      activeWatcherCleanup = null;
+    }
+  };
+  activeWatcherCleanup = cleanup;
+  return cleanup;
+}
