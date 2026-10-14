@@ -21,10 +21,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
-import { Breadcrumb } from "@/components/Breadcrumb";
 import { Banner } from "@/components/ui";
 import { Pagination } from "@/components/Pagination";
-import { SearchableDropdown, SearchableDropdownMultiPanel, type DropdownOption } from "@/components/SearchableDropdown";
+import { SearchableDropdown, SearchableFilterDropdown, SearchableDropdownMultiPanel, type DropdownOption } from "@/components/SearchableDropdown";
 import { EmailTagInput, PhoneGroupField, SelectField, TextAreaField, TextField, WebsiteTagInput } from "@/components/fields";
 import { SideDrawer, DetailFieldGrid } from "@/components/SideDrawer";
 import { ItemPopoverCell } from "@/components/ItemPopoverCell";
@@ -521,6 +520,21 @@ export function BuyersPage() {
   // navigating back to Dashboard.
   useModalHistorySync(Boolean(modalMode), () => setModalMode(null));
   useModalHistorySync(Boolean(detailBuyer), handleCloseDetailBuyer);
+
+  // When user clicks "Buyers" in the sidebar while already on the buyers page,
+  // return to the original buyer list/table page.
+  useEffect(() => {
+    const handleNavActiveClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{ key?: string }>;
+      if (customEvent.detail?.key === "buyers") {
+        setModalMode(null);
+        handleCloseDetailBuyer();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("erp:nav-active-click", handleNavActiveClick);
+    return () => window.removeEventListener("erp:nav-active-click", handleNavActiveClick);
+  }, [handleCloseDetailBuyer]);
 
   // Universal search deep-link: `?id=` opens that buyer's detail drawer
   // directly, so clicking a Buyers result in the topbar search lands on the
@@ -1476,15 +1490,10 @@ export function BuyersPage() {
     return (
       <AppShell activeKey="buyers">
         <main className="page" style={{ width: "100%", padding: "16px 24px", boxSizing: "border-box" }}>
-          <Breadcrumb trail={["Buyer Profiles", "Import Buyers"]} />
-
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
             <div>
-              <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#0F172A", margin: 0 }}>Import Buyers</h1>
-              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-                Upload bulk client accounts and contact profiles from Excel (.xlsx, .xls) or CSV.
-              </div>
+              <h1 className="page-title">Import Buyers</h1>
             </div>
             <button
               type="button"
@@ -1854,17 +1863,12 @@ export function BuyersPage() {
     return (
       <AppShell activeKey="buyers">
         <main className="page" style={{ width: "100%", padding: "16px 24px", boxSizing: "border-box" }}>
-          <Breadcrumb trail={["Buyer Profiles", modalMode === "create" ? "Add Buyer" : "Edit Buyer"]} />
-
           {/* Form Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
             <div>
-              <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#0F172A", margin: 0 }}>
+              <h1 className="page-title">
                 {modalMode === "create" ? "Add Buyer (Client) Profile" : `Edit Buyer Profile: ${form.company_name}`}
               </h1>
-              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-                Complete company profile details and manage contact persons.
-              </div>
             </div>
             <button
               type="button"
@@ -2616,15 +2620,10 @@ export function BuyersPage() {
   return (
     <AppShell activeKey="buyers">
       <main className="page" style={{ width: "100%", padding: "16px 24px", boxSizing: "border-box" }}>
-        <Breadcrumb trail={["Buyer Profiles"]} />
-
         {/* Page Header matching Supplier Master Top Header Bar */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: "12px" }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0F172A", margin: 0 }}>Buyer (Client) Master</h1>
-            <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
-              Manage client accounts, contact persons, potential ratings, and sales pipeline statuses.
-            </div>
+            <h1 className="page-title">Buyer Profiles</h1>
           </div>
 
           {/* Action Header Button Bar matching Supplier Master */}
@@ -2731,16 +2730,17 @@ export function BuyersPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "12px" }}>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", display: "block", marginBottom: "4px" }}>Buyer Type</label>
-                <select value={buyerTypeFilter} onChange={(e) => { setCurrentPage(1); setBuyerTypeFilter(e.target.value); }} style={{ ...selectFilterStyle, width: "100%" }}>
-                  <option value="">All Buyer Types</option>
-                  {buyerTypes.items.map((bt) => (
-                    <option key={bt.id} value={bt.name.toLowerCase()}>
-                      {bt.name}
-                    </option>
-                  ))}
-                  {!buyerTypes.items.some((bt) => bt.name.toLowerCase() === "manufacturer") && <option value="manufacturer">Manufacturer</option>}
-                  {!buyerTypes.items.some((bt) => bt.name.toLowerCase() === "dealer / trader" || bt.name.toLowerCase() === "trader") && <option value="trader">Trader</option>}
-                </select>
+                <SearchableFilterDropdown
+                  value={buyerTypeFilter || null}
+                  onChange={(_val, lbl) => {
+                    setCurrentPage(1);
+                    setBuyerTypeFilter(lbl ? lbl.toLowerCase() : "");
+                  }}
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={searchFetcher("/masters/buyer-types")}
+                  fetchLabelForValue={fetchNameLabel("/masters/buyer-types")}
+                />
               </div>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", display: "block", marginBottom: "4px" }}>Current Status</label>
@@ -2769,38 +2769,50 @@ export function BuyersPage() {
               </div>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", display: "block", marginBottom: "4px" }}>Country</label>
-                <select value={countryFilter} onChange={(e) => { setCurrentPage(1); setCountryFilter(e.target.value); }} style={{ ...selectFilterStyle, width: "100%" }}>
-                  <option value="">Any Country</option>
-                  {countries.items.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <SearchableFilterDropdown
+                  value={countryFilter || null}
+                  onChange={(val) => {
+                    setCurrentPage(1);
+                    setCountryFilter(val || "");
+                  }}
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={searchFetcher("/masters/countries")}
+                  fetchLabelForValue={fetchNameLabel("/masters/countries")}
+                />
               </div>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", display: "block", marginBottom: "4px" }}>Product Category</label>
-                <select value={categoryFilter} onChange={(e) => { setCurrentPage(1); setCategoryFilter(e.target.value); setSubCategoryFilter(""); }} style={{ ...selectFilterStyle, width: "100%" }}>
-                  <option value="">All Categories</option>
-                  {categories.items.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                <SearchableFilterDropdown
+                  value={categoryFilter || null}
+                  onChange={(val) => {
+                    setCurrentPage(1);
+                    setCategoryFilter(val || "");
+                    if (!val) setSubCategoryFilter("");
+                  }}
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={searchFetcher("/masters/product-categories")}
+                  fetchLabelForValue={fetchNameLabel("/masters/product-categories")}
+                />
               </div>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", display: "block", marginBottom: "4px" }}>Sub Category</label>
-                <select value={subCategoryFilter} onChange={(e) => { setCurrentPage(1); setSubCategoryFilter(e.target.value); }} style={{ ...selectFilterStyle, width: "100%" }}>
-                  <option value="">All Sub-Categories</option>
-                  {subCategories.items
-                    .filter((sc) => !categoryFilter || sc.category_id === categoryFilter)
-                    .map((sc) => (
-                      <option key={sc.id} value={sc.id}>
-                        {sc.name}
-                      </option>
-                    ))}
-                </select>
+                <SearchableFilterDropdown
+                  value={subCategoryFilter || null}
+                  onChange={(val) => {
+                    setCurrentPage(1);
+                    setSubCategoryFilter(val || "");
+                  }}
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={
+                    categoryFilter
+                      ? searchFetcher("/masters/product-sub-categories", () => ({ category_id: categoryFilter }))
+                      : searchFetcher("/masters/product-sub-categories")
+                  }
+                  fetchLabelForValue={fetchNameLabel("/masters/product-sub-categories")}
+                />
               </div>
             </div>
           </div>

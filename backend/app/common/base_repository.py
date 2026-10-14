@@ -160,8 +160,10 @@ class BaseRepository(Generic[ModelT]):
             try:
                 if hasattr(column.type, "python_type") and column.type.python_type is uuid.UUID:
                     is_uuid_col = True
+                elif getattr(column.type, "__class__", None).__name__ == "GUID":
+                    is_uuid_col = True
             except (NotImplementedError, AttributeError):
-                is_uuid_col = False
+                is_uuid_col = getattr(column.type, "__class__", None).__name__ == "GUID"
 
             if isinstance(value, str) and isinstance(column.type, (String, Text)):
                 stmt = stmt.where(func.lower(column) == value.lower())
@@ -275,8 +277,10 @@ class BaseRepository(Generic[ModelT]):
             try:
                 if hasattr(column.type, "python_type") and column.type.python_type is uuid.UUID:
                     is_uuid_col = True
+                elif getattr(column.type, "__class__", None).__name__ == "GUID":
+                    is_uuid_col = True
             except (NotImplementedError, AttributeError):
-                is_uuid_col = False
+                is_uuid_col = getattr(column.type, "__class__", None).__name__ == "GUID"
 
             is_bool_col = False
             try:

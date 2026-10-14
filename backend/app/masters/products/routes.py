@@ -231,6 +231,17 @@ async def get_product_names_lookup(
     return build_success_response(data=names, request_id=request.state.request_id)
 
 
+@router.get("/lookup", summary="Lightweight active products lookup")
+async def get_products_lookup(
+    request: Request,
+    service: ProductService = Depends(get_product_service),
+    _current_user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    """Return lightweight list of active products {id, name, product_name, product_code} for fast UI lookups."""
+    products = await service.list_products_lookup()
+    return build_success_response(data=products, request_id=request.state.request_id)
+
+
 @router.get("/{product_id}", summary="Get a product")
 async def get_product(
     product_id: uuid.UUID,

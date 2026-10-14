@@ -18,7 +18,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
-import { Breadcrumb } from "@/components/Breadcrumb";
 import { Banner, ModalAlert, TableMessageRow } from "@/components/ui";
 import { SideDrawer, DetailFieldGrid } from "@/components/SideDrawer";
 import { Pagination } from "@/components/Pagination";
@@ -27,6 +26,7 @@ import { ItemPopoverCell, TextPopoverCell } from "@/components/ItemPopoverCell";
 import { ImpExpDropdown, BulkActionsDropdown, ImportSummaryPanel, downloadSampleCsv, parseFile, WizardModal, type SheetRow } from "@/components/ImportWizard";
 import {
   SearchableDropdown,
+  SearchableFilterDropdown,
   SearchableDropdownMultiPanel,
   type DropdownOption,
 } from "@/components/SearchableDropdown";
@@ -113,6 +113,21 @@ const SUPPLIER_IMPORT_HEADERS: ImportHeader[] = [
   { key: "Status", label: "Status" },
 ];
 
+/** 11-column table layout: merged Company Name & Brand, Category & Sub-Category, Products Supplied & Secondary, hidden Country column */
+const SUPPLIER_TABLE_COLUMNS = [
+  "Checkbox",
+  "Sr. No.",
+  "Company Name & Brand",
+  "Category & Sub-Category",
+  "Products Supplied & Secondary",
+  "City, Province",
+  "Supplier Type",
+  "Current Status",
+  "Grade",
+  "Potential",
+  "Action",
+];
+
 type ModalTab = "first" | "second" | "contacts" | "continue";
 
 const EMPTY_SUPPLIER_FORM = {
@@ -172,6 +187,23 @@ function StatusPill({ value }: { value?: string | null }) {
             ? "No"
             : value;
   return <span className={`badge ${cls}`}>{label}</span>;
+}
+
+function getMediaBadge(url: string) {
+  const lower = url.toLowerCase();
+  if (lower.includes("youtube.com") || lower.includes("youtu.be")) {
+    return { icon: "▶️", label: "YouTube Video", bg: "#fef2f2", border: "#fecaca", text: "#b91c1c" };
+  }
+  if (lower.includes("drive.google.com")) {
+    return { icon: "📁", label: "Google Drive", bg: "#eff6ff", border: "#bfdbfe", text: "#1d4ed8" };
+  }
+  if (lower.includes("onedrive") || lower.includes("sharepoint.com")) {
+    return { icon: "📂", label: "OneDrive", bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d" };
+  }
+  if (lower.includes("vimeo.com")) {
+    return { icon: "🎬", label: "Vimeo", bg: "#faf5ff", border: "#e9d5ff", text: "#7e22ce" };
+  }
+  return { icon: "🎥", label: "Video Link", bg: "#f8fafc", border: "#cbd5e1", text: "#334155" };
 }
 
 function extractSubscriberNumber(val: string | undefined | null): string {
@@ -245,67 +277,61 @@ function SupplierSkeletonRows({
                 break;
               case 2:
                 content = (
-                  <div
-                    className="skeleton-line"
-                    style={{
-                      width: nameWidths[rowIndex % nameWidths.length],
-                      height: "15px",
-                      borderRadius: "4px",
-                    }}
-                  />
-                );
-                break;
-              case 3:
-                content = (
-                  <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                     <div
                       className="skeleton-line"
                       style={{
-                        width: catWidths[rowIndex % catWidths.length],
-                        height: "20px",
-                        borderRadius: "10px",
+                        width: nameWidths[rowIndex % nameWidths.length],
+                        height: "15px",
+                        borderRadius: "4px",
                       }}
                     />
                     <div
                       className="skeleton-line"
-                      style={{ width: "32px", height: "20px", borderRadius: "10px" }}
+                      style={{ width: "80px", height: "12px", borderRadius: "3px" }}
+                    />
+                  </div>
+                );
+                break;
+              case 3:
+                content = (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <div style={{ display: "inline-flex", gap: "4px", alignItems: "center" }}>
+                      <div
+                        className="skeleton-line"
+                        style={{
+                          width: catWidths[rowIndex % catWidths.length],
+                          height: "18px",
+                          borderRadius: "10px",
+                        }}
+                      />
+                      <div
+                        className="skeleton-line"
+                        style={{ width: "32px", height: "18px", borderRadius: "10px" }}
+                      />
+                    </div>
+                    <div
+                      className="skeleton-line"
+                      style={{ width: "65px", height: "14px", borderRadius: "4px" }}
                     />
                   </div>
                 );
                 break;
               case 4:
                 content = (
-                  <div
-                    className="skeleton-line"
-                    style={{ width: "60px", height: "14px", borderRadius: "4px" }}
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <div
+                      className="skeleton-line"
+                      style={{ width: "70px", height: "14px", borderRadius: "4px" }}
+                    />
+                    <div
+                      className="skeleton-line"
+                      style={{ width: "55px", height: "12px", borderRadius: "3px" }}
+                    />
+                  </div>
                 );
                 break;
               case 5:
-                content = (
-                  <div
-                    className="skeleton-line"
-                    style={{ width: "55px", height: "14px", borderRadius: "4px" }}
-                  />
-                );
-                break;
-              case 6:
-                content = (
-                  <div
-                    className="skeleton-line"
-                    style={{ width: "70px", height: "14px", borderRadius: "4px" }}
-                  />
-                );
-                break;
-              case 7:
-                content = (
-                  <div
-                    className="skeleton-line"
-                    style={{ width: "48px", height: "14px", borderRadius: "4px" }}
-                  />
-                );
-                break;
-              case 8:
                 content = (
                   <div
                     className="skeleton-line"
@@ -313,15 +339,7 @@ function SupplierSkeletonRows({
                   />
                 );
                 break;
-              case 9:
-                content = (
-                  <div
-                    className="skeleton-line"
-                    style={{ width: "50px", height: "14px", borderRadius: "4px" }}
-                  />
-                );
-                break;
-              case 10:
+              case 6:
                 content = (
                   <div
                     className="skeleton-line"
@@ -329,7 +347,7 @@ function SupplierSkeletonRows({
                   />
                 );
                 break;
-              case 11:
+              case 7:
                 content = (
                   <div
                     className="skeleton-line"
@@ -337,7 +355,7 @@ function SupplierSkeletonRows({
                   />
                 );
                 break;
-              case 12:
+              case 8:
                 content = (
                   <div
                     className="skeleton-line"
@@ -345,7 +363,7 @@ function SupplierSkeletonRows({
                   />
                 );
                 break;
-              case 13:
+              case 9:
                 content = (
                   <div
                     className="skeleton-line"
@@ -353,7 +371,7 @@ function SupplierSkeletonRows({
                   />
                 );
                 break;
-              case 14:
+              case 10:
                 content = (
                   <div
                     className="skeleton-line"
@@ -371,10 +389,10 @@ function SupplierSkeletonRows({
                 style={{
                   padding: "10px 12px",
                   verticalAlign: "middle",
-                  width: colIdx === 0 ? "40px" : colIdx === 1 ? "65px" : undefined,
-                  minWidth: colIdx === 0 ? "40px" : colIdx === 1 ? "65px" : undefined,
-                  maxWidth: colIdx === 0 ? "45px" : colIdx === 1 ? "75px" : undefined,
-                  textAlign: colIdx === 0 || colIdx === 1 || colIdx === 14 ? "center" : "left",
+                  width: colIdx === 0 ? "40px" : colIdx === 1 ? "65px" : colIdx === 2 ? "260px" : undefined,
+                  minWidth: colIdx === 0 ? "40px" : colIdx === 1 ? "65px" : colIdx === 2 ? "200px" : undefined,
+                  maxWidth: colIdx === 0 ? "45px" : colIdx === 1 ? "75px" : colIdx === 2 ? "270px" : undefined,
+                  textAlign: colIdx === 0 || colIdx === 1 || colIdx === 10 ? "center" : "left",
                   ...getFreezeStyle(colIdx, false),
                 }}
               >
@@ -470,10 +488,18 @@ export function SuppliersPage() {
   const [alertPopup, setAlertPopup] = useState<{ title: string; message: string } | null>(null);
   const [drawerSupplier, setDrawerSupplier] = useState<Supplier | null>(null);
   const [pinnedCols, setPinnedCols] = useState<Record<number, "left" | "right">>(() => {
-    const saved = localStorage.getItem("suppliers_pinned_cols");
+    const saved = localStorage.getItem("suppliers_pinned_cols_v3");
     if (saved !== null) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        const sanitized: Record<number, "left" | "right"> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          const numKey = Number(k);
+          if (numKey >= 0 && numKey < 11 && (v === "left" || v === "right")) {
+            sanitized[numKey] = v;
+          }
+        }
+        return sanitized;
       } catch {
         // fallback
       }
@@ -482,7 +508,7 @@ export function SuppliersPage() {
   });
 
   useEffect(() => {
-    localStorage.setItem("suppliers_pinned_cols", JSON.stringify(pinnedCols));
+    localStorage.setItem("suppliers_pinned_cols_v3", JSON.stringify(pinnedCols));
   }, [pinnedCols]);
 
   const [colLeftOffsets, setColLeftOffsets] = useState<Record<number, number>>({});
@@ -510,7 +536,7 @@ export function SuppliersPage() {
       if (next[colIdx]) {
         delete next[colIdx];
       } else {
-        if (colIdx >= 13) {
+        if (colIdx >= 9) {
           next[colIdx] = "right";
         } else {
           next[colIdx] = "left";
@@ -521,7 +547,7 @@ export function SuppliersPage() {
   }, []);
 
   const displayOrder = useMemo(() => {
-    const allIndices = Array.from({ length: 15 }, (_, i) => i);
+    const allIndices = Array.from({ length: 11 }, (_, i) => i);
     const lefts = allIndices.filter((idx) => pinnedCols[idx] === "left");
     const unpinned = allIndices.filter((idx) => !pinnedCols[idx]);
     const rights = allIndices.filter((idx) => pinnedCols[idx] === "right");
@@ -655,6 +681,26 @@ export function SuppliersPage() {
   useModalHistorySync(Boolean(drawerSupplier), handleCloseDrawer);
   useModalHistorySync(isImportPageOpen, () => setIsImportPageOpen(false));
 
+  // When user clicks "Suppliers" in the sidebar while already on the suppliers page,
+  // return to the original supplier list/table page.
+  useEffect(() => {
+    const handleNavActiveClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{ key?: string }>;
+      if (customEvent.detail?.key === "suppliers") {
+        setModalOpen(false);
+        setCurrentSupplierId(null);
+        setError(null);
+        setAlertPopup(null);
+        setValidationErrors({});
+        handleCloseDrawer();
+        setIsImportPageOpen(false);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("erp:nav-active-click", handleNavActiveClick);
+    return () => window.removeEventListener("erp:nav-active-click", handleNavActiveClick);
+  }, [handleCloseDrawer]);
+
   // Universal search deep-link: `?id=` opens that supplier's detail drawer
   // directly, so clicking a Suppliers result in the topbar search lands on
   // the actual record instead of just the bare list.
@@ -702,6 +748,7 @@ export function SuppliersPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [defaultChinaId, setDefaultChinaId] = useState<string | null>(null);
   const [formCountryPhoneCode, setFormCountryPhoneCode] = useState<string>("+86");
+  const [isCompanyInputFocused, setIsCompanyInputFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const existingSuppliers = useLookup<Supplier>("/suppliers", 500);
@@ -1058,43 +1105,7 @@ export function SuppliersPage() {
     []
   );
 
-  const companyNameFetcher = useCallback(
-    async (term: string, signal: AbortSignal): Promise<DropdownOption[]> => {
-      const { data } = await apiGet<Supplier[]>(
-        "/suppliers" + toQueryString({ search: term, page: 1, page_size: 20 }),
-        { signal }
-      );
-      return (data || []).map((d) => ({
-        value: d.company_name,
-        label: d.company_name,
-        sublabel: d.supplier_type || "Supplier",
-        group: "Existing Similar Suppliers",
-      }));
-    },
-    []
-  );
 
-
-  const productFetcher = useCallback(
-    async (term: string, signal: AbortSignal): Promise<DropdownOption[]> => {
-      const { data } = await apiGet<Product[]>(
-        "/masters/products" +
-        toQueryString({
-          search: term,
-          page: 1,
-          page_size: 20,
-          sort_order: "asc",
-          status: "active",
-        }),
-        { signal }
-      );
-      return data.map((d) => ({
-        value: d.id,
-        label: `${d.product_code} — ${d.product_name}`,
-      }));
-    },
-    []
-  );
 
   const fetchNameLabel = useCallback(
     (apiBase: string) => async (id: string) => {
@@ -1108,10 +1119,154 @@ export function SuppliersPage() {
     []
   );
 
-  const fetchProductLabel = useCallback(async (id: string) => {
-    const { data } = await apiGet<Product>(`/masters/products/${id}`);
-    return `${data.product_code} — ${data.product_name}`;
-  }, []);
+  const productLabelCacheRef = useRef<Map<string, string>>(new Map());
+
+  const fetchProductLabel = useCallback(
+    async (id: string) => {
+      if (productLabelCacheRef.current.has(id)) {
+        return productLabelCacheRef.current.get(id)!;
+      }
+      const local = productsLookup.items.find((p) => p.id === id);
+      if (local) {
+        const lbl = `${local.product_code} — ${local.product_name || local.product_name_tally || "Product"}`;
+        productLabelCacheRef.current.set(id, lbl);
+        return lbl;
+      }
+      try {
+        const { data } = await apiGet<Product>(`/masters/products/${id}`);
+        const lbl = data ? `${data.product_code} — ${data.product_name || data.product_name_tally || "Product"}` : id;
+        productLabelCacheRef.current.set(id, lbl);
+        return lbl;
+      } catch {
+        return id;
+      }
+    },
+    [productsLookup.items]
+  );
+
+  const fetchSubCategoryOptions = useCallback(
+    async (query: string, signal?: AbortSignal) => {
+      if (formCategoryIds.length === 0) return [];
+      const q = query.trim().toLowerCase();
+      let items = subCategoriesLookup.items;
+      if (items.length === 0) {
+        try {
+          const { data } = await apiGet<{ id: string; name: string; code?: string; category_id: string }[]>(
+            "/masters/product-sub-categories?page=1&page_size=500&sort_order=asc&status=active",
+            { signal }
+          );
+          if (data) items = data as ProductSubCategory[];
+        } catch {
+          // fallback
+        }
+      }
+      let filtered = items.filter((sc) => formCategoryIds.includes(sc.category_id));
+      filtered = [...filtered].sort((a, b) => {
+        const idxA = formCategoryIds.indexOf(a.category_id);
+        const idxB = formCategoryIds.indexOf(b.category_id);
+        if (idxA !== idxB) return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+        return a.name.localeCompare(b.name);
+      });
+      if (q) {
+        filtered = filtered.filter(
+          (sc) => sc.name.toLowerCase().includes(q) || (sc.code && sc.code.toLowerCase().includes(q))
+        );
+      }
+      const catMap = new Map<string, string>();
+      categoriesLookup.items.forEach((c) => catMap.set(c.id, c.name));
+
+      return filtered.map((sc) => ({
+        value: sc.id,
+        label: sc.name,
+        group: catMap.get(sc.category_id) || "Other Categories",
+      }));
+    },
+    [formCategoryIds, subCategoriesLookup.items, categoriesLookup.items]
+  );
+
+  const fetchSuppliedProductOptions = useCallback(
+    async (query: string, signal?: AbortSignal) => {
+      if (formCategoryIds.length === 0 || formSubCategoryIds.length === 0) {
+        return [];
+      }
+      const q = query.trim();
+
+      try {
+        const { data } = await apiGet<Product[]>(
+          "/masters/products" +
+            toQueryString({
+              category_id: formCategoryIds.join(","),
+              sub_category_id: formSubCategoryIds.join(","),
+              search: q || undefined,
+              status: "active",
+              page: 1,
+              page_size: 250,
+              sort_order: "asc",
+            }),
+          { signal }
+        );
+
+        const list = Array.isArray(data) ? data : [];
+        if (list.length === 0) return [];
+
+        // Cache resolved product labels for instant label display
+        list.forEach((p) => {
+          if (p.id) {
+            productLabelCacheRef.current.set(
+              p.id,
+              `${p.product_code} — ${p.product_name || p.product_name_tally || "Product"}`
+            );
+          }
+        });
+
+        // Map category and subcategory names for grouping
+        const catMap = new Map<string, string>();
+        categoriesLookup.items.forEach((c) => catMap.set(c.id, c.name));
+
+        const subCatMap = new Map<string, string>();
+        subCategoriesLookup.items.forEach((sc) => subCatMap.set(sc.id, sc.name));
+        subCategoryNamesFallback.items.forEach((sc) => {
+          if (!subCatMap.has(sc.id)) subCatMap.set(sc.id, sc.name);
+        });
+
+        // Sort products by Category selection order -> Sub-Category selection order -> Product Code
+        const sorted = [...list].sort((a, b) => {
+          const catIdxA = formCategoryIds.indexOf(a.category_id);
+          const catIdxB = formCategoryIds.indexOf(b.category_id);
+          if (catIdxA !== catIdxB) {
+            return (catIdxA === -1 ? 999 : catIdxA) - (catIdxB === -1 ? 999 : catIdxB);
+          }
+
+          const subA = a.sub_category_id || "";
+          const subB = b.sub_category_id || "";
+          const subIdxA = formSubCategoryIds.indexOf(subA);
+          const subIdxB = formSubCategoryIds.indexOf(subB);
+          if (subIdxA !== subIdxB) {
+            return (subIdxA === -1 ? 999 : subIdxA) - (subIdxB === -1 ? 999 : subIdxB);
+          }
+
+          return (a.product_code || "").localeCompare(b.product_code || "");
+        });
+
+        return sorted.map((p) => {
+          const catName = catMap.get(p.category_id) || "Category";
+          const subCatName = (p.sub_category_id ? subCatMap.get(p.sub_category_id) : "") || "Sub-Category";
+          const groupTitle = formCategoryIds.length > 1 ? `${catName} › ${subCatName}` : subCatName;
+
+          return {
+            value: p.id,
+            label: `${p.product_code} — ${p.product_name || p.product_name_tally || "Product"}`,
+            group: groupTitle,
+          };
+        });
+      } catch (err: any) {
+        if (signal?.aborted) return [];
+        console.error("Failed to fetch supplied products:", err);
+        return [];
+      }
+    },
+    [formCategoryIds, formSubCategoryIds, categoriesLookup.items, subCategoriesLookup.items, subCategoryNamesFallback.items]
+  );
 
   const [sortColIndex, setSortColIndex] = useState<number | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
@@ -1146,50 +1301,42 @@ export function SuppliersPage() {
           return sortDirection === "asc" ? tA - tB : tB - tA;
         }
         case 2:
-          valA = a.company_name || "";
-          valB = b.company_name || "";
+          valA = `${a.company_name || ""} ${a.brand_description || ""}`;
+          valB = `${b.company_name || ""} ${b.brand_description || ""}`;
           break;
-        case 3:
-          valA = (a.category_ids || []).map((id) => resolver.get("categories", id) || "").filter(Boolean).join(", ");
-          valB = (b.category_ids || []).map((id) => resolver.get("categories", id) || "").filter(Boolean).join(", ");
+        case 3: {
+          const catA = (a.category_ids || []).map((id) => resolver.get("categories", id) || "").filter(Boolean).join(", ");
+          const catB = (b.category_ids || []).map((id) => resolver.get("categories", id) || "").filter(Boolean).join(", ");
+          const subA = (a.sub_category_ids || []).map((id) => resolver.get("subCategories", id) || "").filter(Boolean).join(", ");
+          const subB = (b.sub_category_ids || []).map((id) => resolver.get("subCategories", id) || "").filter(Boolean).join(", ");
+          valA = `${catA} ${subA}`;
+          valB = `${catB} ${subB}`;
           break;
-        case 4:
-          valA = (a.sub_category_ids || []).map((id) => resolver.get("subCategories", id) || "").filter(Boolean).join(", ");
-          valB = (b.sub_category_ids || []).map((id) => resolver.get("subCategories", id) || "").filter(Boolean).join(", ");
+        }
+        case 4: {
+          const prodA = (a.product_ids || []).map((id) => resolver.get("products", id) || "").filter(Boolean).join(", ");
+          const prodB = (b.product_ids || []).map((id) => resolver.get("products", id) || "").filter(Boolean).join(", ");
+          valA = `${prodA} ${a.secondary_products_description || ""}`;
+          valB = `${prodB} ${b.secondary_products_description || ""}`;
           break;
+        }
         case 5:
-          valA = (a.product_ids || []).map((id) => resolver.get("products", id) || "").filter(Boolean).join(", ");
-          valB = (b.product_ids || []).map((id) => resolver.get("products", id) || "").filter(Boolean).join(", ");
-          break;
-        case 6:
-          valA = a.secondary_products_description || "";
-          valB = b.secondary_products_description || "";
-          break;
-        case 7:
-          valA = resolver.get("countries", a.country_id) || "";
-          valB = resolver.get("countries", b.country_id) || "";
-          break;
-        case 8:
           valA = `${resolver.get("cities", a.city_id) || ""}, ${resolver.get("states", a.state_id) || ""}`;
           valB = `${resolver.get("cities", b.city_id) || ""}, ${resolver.get("states", b.state_id) || ""}`;
           break;
-        case 9:
-          valA = a.brand_description || "";
-          valB = b.brand_description || "";
-          break;
-        case 10:
+        case 6:
           valA = a.supplier_type || "";
           valB = b.supplier_type || "";
           break;
-        case 11:
+        case 7:
           valA = a.current_status || "";
           valB = b.current_status || "";
           break;
-        case 12:
+        case 8:
           valA = a.supplier_grade || "";
           valB = b.supplier_grade || "";
           break;
-        case 13:
+        case 9:
           valA = a.potential || "";
           valB = b.potential || "";
           break;
@@ -1477,7 +1624,7 @@ export function SuppliersPage() {
         secondary_website: supplier.secondary_website || "",
         supplier_grade: supplier.supplier_grade || "",
         current_status: supplier.current_status || "",
-        potential: supplier.potential || "",
+        potential: supplier.potential ? supplier.potential.toLowerCase() : "",
         potential_reason: supplier.potential_reason || "",
         secondary_products_description: supplier.secondary_products_description || "",
         visited_factory_office: String(supplier.visited_factory_office),
@@ -2065,15 +2212,10 @@ export function SuppliersPage() {
     return (
       <AppShell activeKey="suppliers" pageClassName="page-suppliers">
         <main className="page" style={{ width: "100%", padding: "16px 24px", boxSizing: "border-box" }}>
-          <Breadcrumb trail={["Supplier Profiles", "Import Suppliers"]} />
-
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
             <div>
-              <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#0F172A", margin: 0 }}>Import Suppliers</h1>
-              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>
-                Upload bulk supplier accounts, contacts, and sourcing capabilities from Excel (.xlsx, .xls) or CSV.
-              </div>
+              <h1 className="page-title">Import Suppliers</h1>
             </div>
             <button
               type="button"
@@ -2445,12 +2587,9 @@ export function SuppliersPage() {
           {/* Header Bar with Back Button */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
             <div>
-              <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#0f172a", margin: 0 }}>
+              <h1 className="page-title">
                 {modalMode === "quick" ? "Add Supplier (Quick)" : (currentSupplierId ? "Edit Supplier" : "Add Supplier")}
               </h1>
-              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "2px" }}>
-                {modalMode === "quick" ? "Fill primary supplier details for quick creation." : "Complete the supplier details below."}
-              </div>
             </div>
             <button
               type="button"
@@ -2549,22 +2688,45 @@ export function SuppliersPage() {
                       <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>
                         Name of Company <span style={{ color: "#ef4444" }}>*</span>
                       </label>
-                      <SearchableDropdown
+                      <input
                         id="company_name"
-                        hasError={Boolean(validationErrors.company_name)}
+                        type="text"
                         value={form.company_name}
-                        onChange={(_, label) => {
-                          setField("company_name", label);
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setField("company_name", val);
                           if (validationErrors.company_name) setValidationErrors((prev) => ({ ...prev, company_name: "" }));
                         }}
-                        allowCustomText={true}
-                        onTextChange={(v) => {
-                          setField("company_name", v);
-                          if (validationErrors.company_name) setValidationErrors((prev) => ({ ...prev, company_name: "" }));
+                        placeholder="Enter supplier company name..."
+                        autoComplete="off"
+                        style={{
+                          width: "100%",
+                          height: "38px",
+                          padding: "0 12px",
+                          fontSize: "13px",
+                          borderRadius: "6px",
+                          border: validationErrors.company_name ? "1.5px solid #ef4444" : "1px solid #cbd5e1",
+                          backgroundColor: validationErrors.company_name ? "#fff5f5" : "#ffffff",
+                          boxShadow: validationErrors.company_name ? "0 0 0 3px rgba(239, 68, 68, 0.15)" : "none",
+                          color: "#0f172a",
+                          outline: "none",
+                          boxSizing: "border-box",
+                          transition: "border-color 0.15s ease, box-shadow 0.15s ease",
                         }}
-                        placeholder="Search existing or type company name..."
-                        fetchOptions={companyNameFetcher}
-                        fetchLabelForValue={async (v) => v}
+                        onFocus={(e) => {
+                          setIsCompanyInputFocused(true);
+                          if (!validationErrors.company_name) {
+                            e.target.style.borderColor = "#2563eb";
+                            e.target.style.boxShadow = "0 0 0 3px rgba(37, 99, 235, 0.15)";
+                          }
+                        }}
+                        onBlur={(e) => {
+                          setTimeout(() => setIsCompanyInputFocused(false), 200);
+                          if (!validationErrors.company_name) {
+                            e.target.style.borderColor = "#cbd5e1";
+                            e.target.style.boxShadow = "none";
+                          }
+                        }}
                       />
                       {validationErrors.company_name && (
                         <div style={{ color: "#ef4444", fontSize: "12px", fontWeight: 600, marginTop: "5px", display: "flex", alignItems: "center", gap: "4px" }}>
@@ -2576,54 +2738,181 @@ export function SuppliersPage() {
                         if (!typed) return null;
                         const cleanTyped = typed.toLowerCase().replace(/[\s-]/g, "");
 
-                        const matches = existingSuppliers.items.filter((s) => {
-                          if (currentSupplierId && String(s.id).toLowerCase() === String(currentSupplierId).toLowerCase()) return false;
-                          const sName = (s.company_name || "").toLowerCase().replace(/[\s-]/g, "");
-                          return sName.includes(cleanTyped);
-                        }).slice(0, 5);
-
                         const exact = existingSuppliers.items.find((s) => {
                           if (currentSupplierId && String(s.id).toLowerCase() === String(currentSupplierId).toLowerCase()) return false;
                           const sName = (s.company_name || "").toLowerCase().replace(/[\s-]/g, "");
                           return sName === cleanTyped;
                         });
 
+                        const matches = existingSuppliers.items
+                          .filter((s) => {
+                            if (currentSupplierId && String(s.id).toLowerCase() === String(currentSupplierId).toLowerCase()) return false;
+                            const sName = (s.company_name || "").toLowerCase().replace(/[\s-]/g, "");
+                            return sName.includes(cleanTyped);
+                          })
+                          .sort((a, b) => {
+                            const aClean = (a.company_name || "").toLowerCase().replace(/[\s-]/g, "");
+                            const bClean = (b.company_name || "").toLowerCase().replace(/[\s-]/g, "");
+                            const aStarts = aClean.startsWith(cleanTyped);
+                            const bStarts = bClean.startsWith(cleanTyped);
+                            if (aStarts && !bStarts) return -1;
+                            if (!aStarts && bStarts) return 1;
+                            return (a.company_name || "").localeCompare(b.company_name || "");
+                          })
+                          .slice(0, 8);
+
                         return (
                           <>
-                            {exact && (
-                              <div style={{ marginTop: "6px", fontSize: "12.5px", color: "#dc2626", fontWeight: 700, display: "flex", alignItems: "center", gap: "6px", background: "#fef2f2", padding: "6px 10px", borderRadius: "6px", border: "1px solid #fecaca" }}>
-                                <span>⛔</span> Supplier "{exact.company_name}" already exists in Supplier Master! Cannot save duplicate.
+                            {/* Floating Suggestion Dropdown (Untouchable / Non-selectable suggestions) */}
+                            {isCompanyInputFocused && matches.length > 0 && (
+                              <div
+                                onMouseDown={(e) => e.preventDefault()}
+                                style={{
+                                  position: "absolute",
+                                  top: "calc(100% + 4px)",
+                                  left: 0,
+                                  right: 0,
+                                  backgroundColor: "#ffffff",
+                                  borderRadius: "8px",
+                                  border: "1px solid #cbd5e1",
+                                  boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.12), 0 8px 10px -6px rgba(15, 23, 42, 0.08)",
+                                  zIndex: 100,
+                                  maxHeight: "280px",
+                                  overflowY: "auto",
+                                  padding: 0,
+                                }}
+                              >
+                                {exact && (
+                                  <div
+                                    style={{
+                                      padding: "8px 12px",
+                                      background: "#fef2f2",
+                                      borderBottom: "1px solid #fee2e2",
+                                      color: "#dc2626",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "6px",
+                                    }}
+                                  >
+                                    <span>⛔</span>
+                                    <span>Supplier "{exact.company_name}" already exists in Master! Cannot save duplicate.</span>
+                                  </div>
+                                )}
+                                <div
+                                  style={{
+                                    padding: "7px 12px",
+                                    fontSize: "11px",
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.05em",
+                                    color: "#64748b",
+                                    borderBottom: "1px solid #f1f5f9",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    background: "#f8fafc",
+                                  }}
+                                >
+                                  <span>Existing in Master ({matches.length})</span>
+                                  <span
+                                    style={{
+                                      fontSize: "10px",
+                                      fontWeight: 600,
+                                      background: "#f1f5f9",
+                                      color: "#64748b",
+                                      padding: "1px 6px",
+                                      borderRadius: "4px",
+                                      textTransform: "none",
+                                    }}
+                                  >
+                                    Reference Only (Non-selectable)
+                                  </span>
+                                </div>
+                                <div style={{ padding: "4px 0" }}>
+                                  {matches.map((s) => {
+                                    const isThisExact = (s.company_name || "").trim().toLowerCase() === typed.toLowerCase();
+                                    return (
+                                      <div
+                                        key={s.id}
+                                        style={{
+                                          padding: "8px 12px",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "space-between",
+                                          fontSize: "12.5px",
+                                          color: isThisExact ? "#dc2626" : "#334155",
+                                          backgroundColor: isThisExact ? "#fff5f5" : "transparent",
+                                          borderLeft: isThisExact ? "3px solid #ef4444" : "3px solid transparent",
+                                          userSelect: "none",
+                                          pointerEvents: "none",
+                                          cursor: "default",
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                          <span style={{ color: "#94a3b8", fontSize: "13px" }}>🏢</span>
+                                          <span style={{ fontWeight: isThisExact ? 700 : 500 }}>{s.company_name}</span>
+                                        </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                          {s.supplier_type && (
+                                            <span
+                                              style={{
+                                                fontSize: "10.5px",
+                                                padding: "1px 6px",
+                                                borderRadius: "4px",
+                                                background: "#f1f5f9",
+                                                color: "#475569",
+                                                fontWeight: 500,
+                                              }}
+                                            >
+                                              {s.supplier_type}
+                                            </span>
+                                          )}
+                                          <span style={{ fontSize: "10px", color: "#94a3b8", fontStyle: "italic" }}>
+                                            (In master)
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <div
+                                  style={{
+                                    padding: "6px 12px",
+                                    borderTop: "1px solid #f1f5f9",
+                                    fontSize: "11px",
+                                    color: "#64748b",
+                                    background: "#f8fafc",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                  }}
+                                >
+                                  <span>ℹ️</span>
+                                  <span>Existing master suggestions. You can type freely without selecting.</span>
+                                </div>
                               </div>
                             )}
-                            {matches.length > 0 && !exact && (
-                              <div style={{ marginTop: "6px", fontSize: "12px", color: "#475569", background: "#f8fafc", border: "1px solid #e2e8f0", padding: "6px 10px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                                <span style={{ fontWeight: 600, color: "#0f172a" }}>ℹ️ Similar in Master:</span>
-                                {matches.slice(0, 4).map((s) => (
-                                  <button
-                                    key={s.id}
-                                    type="button"
-                                    onClick={() => setField("company_name", s.company_name)}
-                                    style={{
-                                      background: "#ffffff",
-                                      border: "1px solid #cbd5e1",
-                                      borderRadius: "4px",
-                                      padding: "2px 8px",
-                                      fontSize: "11.5px",
-                                      cursor: "pointer",
-                                      color: "#1e293b",
-                                      fontWeight: 500,
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: "4px",
-                                    }}
-                                    title="Click to select this existing supplier"
-                                  >
-                                    <span>{s.company_name}</span>
-                                    {s.supplier_type && (
-                                      <span style={{ fontSize: "10.5px", color: "#64748b" }}>({s.supplier_type})</span>
-                                    )}
-                                  </button>
-                                ))}
+
+                            {/* Static alert when input blurred or exact match duplicate */}
+                            {exact && !isCompanyInputFocused && (
+                              <div
+                                style={{
+                                  marginTop: "6px",
+                                  fontSize: "12.5px",
+                                  color: "#dc2626",
+                                  fontWeight: 700,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  background: "#fef2f2",
+                                  padding: "6px 10px",
+                                  borderRadius: "6px",
+                                  border: "1px solid #fecaca",
+                                }}
+                              >
+                                <span>⛔</span> Supplier "{exact.company_name}" already exists in Supplier Master! Cannot save duplicate.
                               </div>
                             )}
                           </>
@@ -2631,21 +2920,29 @@ export function SuppliersPage() {
                       })()}
                     </div>
                     <div className="field">
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product Category (multiple)</label>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Category</label>
                       <SearchableDropdownMultiPanel
                         values={formCategoryIds}
                         onChange={(newCatIds) => {
                           setFormCategoryIds(newCatIds);
-                          // Auto-prune any subCategoryIds that no longer belong to selected categories
+                          // Auto-prune any subCategoryIds and productIds that no longer belong to selected categories
                           if (newCatIds.length === 0) {
                             setFormSubCategoryIds([]);
+                            setFormProductIds([]);
                           } else {
-                            setFormSubCategoryIds((prevSubIds) => {
-                              const validCategorySubIds = subCategoriesLookup.items
-                                .filter((sc) => newCatIds.includes(sc.category_id))
-                                .map((sc) => sc.id);
-                              return prevSubIds.filter((id) => validCategorySubIds.includes(id));
-                            });
+                            const validCategorySubIds = subCategoriesLookup.items
+                              .filter((sc) => newCatIds.includes(sc.category_id))
+                              .map((sc) => sc.id);
+                            setFormSubCategoryIds((prevSubIds) =>
+                              prevSubIds.filter((id) => validCategorySubIds.includes(id))
+                            );
+                            setFormProductIds((prevProdIds) =>
+                              prevProdIds.filter((pId) => {
+                                const prod = productsLookup.items.find((p) => p.id === pId);
+                                if (!prod) return true;
+                                return newCatIds.includes(prod.category_id) && (!prod.sub_category_id || validCategorySubIds.includes(prod.sub_category_id));
+                              })
+                            );
                           }
                         }}
                         placeholder="-- Select Categories --"
@@ -2658,58 +2955,27 @@ export function SuppliersPage() {
                   {/* Row 1.5: Key Strength Sub-Category + Products Supplied (2 columns) */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px", marginBottom: "18px" }}>
                     <div className="field">
-                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Key Strength Sub-Category (multiple)</label>
+                      <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Sub Category (key strength)</label>
                       <SearchableDropdownMultiPanel
                         values={formSubCategoryIds}
-                        onChange={setFormSubCategoryIds}
-                        disabled={formCategoryIds.length === 0}
-                        placeholder={formCategoryIds.length > 0 ? "-- Select Sub-Categories --" : "-- Please select Category first --"}
-                        fetchOptions={async (query, signal) => {
-                          if (formCategoryIds.length === 0) {
-                            return [];
-                          }
-                          const q = query.trim().toLowerCase();
-                          let items = subCategoriesLookup.items;
-                          if (items.length === 0) {
-                            try {
-                              const { data } = await apiGet<{ id: string; name: string; code?: string; category_id: string }[]>(
-                                "/masters/product-sub-categories?page=1&page_size=500&sort_order=asc&status=active",
-                                { signal }
-                              );
-                              if (data) items = data as ProductSubCategory[];
-                            } catch {
-                              // fallback
-                            }
-                          }
-                          items = items.filter((sc) => formCategoryIds.includes(sc.category_id));
-                          items = [...items].sort((a, b) => {
-                            const idxA = formCategoryIds.indexOf(a.category_id);
-                            const idxB = formCategoryIds.indexOf(b.category_id);
-                            if (idxA !== idxB) return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-                            return a.name.localeCompare(b.name);
-                          });
-                          if (q) {
-                            items = items.filter(
-                              (sc) => sc.name.toLowerCase().includes(q) || (sc.code && sc.code.toLowerCase().includes(q))
+                        onChange={(newSubIds) => {
+                          setFormSubCategoryIds(newSubIds);
+                          // Auto-prune any productIds that no longer belong to selected sub-categories
+                          if (newSubIds.length === 0) {
+                            setFormProductIds([]);
+                          } else {
+                            setFormProductIds((prevProdIds) =>
+                              prevProdIds.filter((pId) => {
+                                const prod = productsLookup.items.find((p) => p.id === pId);
+                                if (!prod) return true;
+                                return prod.sub_category_id ? newSubIds.includes(prod.sub_category_id) : true;
+                              })
                             );
                           }
-                          const catMap = new Map<string, string>();
-                          if (categoriesLookup.items.length > 0) {
-                            categoriesLookup.items.forEach((c) => catMap.set(c.id, c.name));
-                          } else {
-                            try {
-                              const { data: cats } = await apiGet<any[]>("/masters/product-categories?page=1&page_size=500", { signal });
-                              if (cats) cats.forEach((c) => catMap.set(c.id, c.name));
-                            } catch {
-                              // fallback
-                            }
-                          }
-                          return items.map((sc) => ({
-                            value: sc.id,
-                            label: sc.name,
-                            group: catMap.get(sc.category_id) || "Other Categories",
-                          }));
                         }}
+                        disabled={formCategoryIds.length === 0}
+                        placeholder={formCategoryIds.length > 0 ? "-- Select Sub-Categories --" : "-- Please select Category first --"}
+                        fetchOptions={fetchSubCategoryOptions}
                         fetchLabelForValue={fetchNameLabel("/masters/product-sub-categories")}
                       />
                     </div>
@@ -2718,8 +2984,15 @@ export function SuppliersPage() {
                       <SearchableDropdownMultiPanel
                         values={formProductIds}
                         onChange={setFormProductIds}
-                        placeholder="-- Select Products Supplied --"
-                        fetchOptions={productFetcher}
+                        disabled={formCategoryIds.length === 0 || formSubCategoryIds.length === 0}
+                        placeholder={
+                          formCategoryIds.length === 0
+                            ? "-- Please select Category first --"
+                            : formSubCategoryIds.length === 0
+                            ? "-- Please select Sub-Categories first --"
+                            : "-- Select Products Supplied --"
+                        }
+                        fetchOptions={fetchSuppliedProductOptions}
                         fetchLabelForValue={fetchProductLabel}
                       />
                     </div>
@@ -3037,10 +3310,10 @@ export function SuppliersPage() {
                         <option value="new" disabled={lockNewStatus}>New</option>
                         <option value="existing">Existing</option>
                       </SelectField>
-                      <SelectField id="potential" label="Potential (Yes / No)" value={form.potential} onChange={(v) => setField("potential", v)}>
+                      <SelectField id="potential" label="Potential (Yes / No)" value={form.potential ? form.potential.toLowerCase() : ""} onChange={(v) => setField("potential", v.toLowerCase())}>
                         <option value="">Select Potential</option>
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
                       </SelectField>
                     </div>
 
@@ -3864,13 +4137,9 @@ export function SuppliersPage() {
         </main>
       ) : (
         <main className="page">
-          <Breadcrumb trail={["Supplier Profiles"]} />
-          <div className="page-header">
+          <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
             <div>
-              <h1>Supplier Profiles</h1>
-              <div className="page-subtitle">
-                Supplier directory, contacts, product categories, and sourcing status.
-              </div>
+              <h1 className="page-title">Supplier Profiles</h1>
             </div>
             <div className="page-header-actions" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
               <button
@@ -3967,7 +4236,7 @@ export function SuppliersPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "14px" }}>
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product Category</label>
-                  <SearchableDropdown
+                  <SearchableFilterDropdown
                     value={categoryFilter}
                     onChange={(v) => {
                       setCurrentPage(1);
@@ -3976,47 +4245,64 @@ export function SuppliersPage() {
                         setSubCategoryFilter(null);
                       }
                     }}
-                    placeholder="Filter: Product Category"
+                    allLabel="All"
+                    placeholder="All"
                     fetchOptions={searchFetcher("/masters/product-categories")}
                     fetchLabelForValue={fetchNameLabel("/masters/product-categories")}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: categoryFilter ? "#475569" : "#94a3b8", marginBottom: "4px", display: "block" }}>Key Strength Sub Category</label>
-                  <SearchableDropdown
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Key Strength Sub Category</label>
+                  <SearchableFilterDropdown
                     value={subCategoryFilter}
-                    disabled={!categoryFilter}
                     onChange={(v) => {
                       setCurrentPage(1);
                       setSubCategoryFilter(v);
                     }}
-                    placeholder={categoryFilter ? "Filter: Sub Category" : "Select Category first"}
+                    allLabel="All"
+                    placeholder="All"
                     fetchOptions={
                       categoryFilter
                         ? searchFetcher("/masters/product-sub-categories", (): Record<string, string> => ({
                             category_id: categoryFilter,
                           }))
-                        : async () => []
+                        : searchFetcher("/masters/product-sub-categories")
                     }
                     fetchLabelForValue={fetchNameLabel("/masters/product-sub-categories")}
                   />
                 </div>
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product Supplied</label>
-                  <SearchableDropdown
+                  <SearchableFilterDropdown
                     value={productFilter}
                     onChange={(v) => {
                       setCurrentPage(1);
                       setProductFilter(v);
                     }}
-                    placeholder="Filter: Product"
-                    fetchOptions={productFetcher}
+                    allLabel="All"
+                    placeholder={subCategoryFilter ? "All (in sub-category)" : categoryFilter ? "All (in category)" : "All"}
+                    fetchOptions={async (term, signal) => {
+                      const params: Record<string, string> = {
+                        search: term,
+                        page: "1",
+                        page_size: "100",
+                        sort_order: "asc",
+                        status: "active",
+                      };
+                      if (categoryFilter) params.category_id = categoryFilter;
+                      if (subCategoryFilter) params.sub_category_id = subCategoryFilter;
+                      const { data } = await apiGet<Product[]>("/masters/products" + toQueryString(params), { signal });
+                      return (data || []).map((d) => ({
+                        value: d.id,
+                        label: `${d.product_code} — ${d.product_name || d.product_name_tally || "Product"}`,
+                      }));
+                    }}
                     fetchLabelForValue={fetchProductLabel}
                   />
                 </div>
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Country</label>
-                  <SearchableDropdown
+                  <SearchableFilterDropdown
                     value={countryFilter}
                     onChange={(v) => {
                       setCountryFilter(v);
@@ -4024,66 +4310,66 @@ export function SuppliersPage() {
                       setCityFilter(null);
                       setCurrentPage(1);
                     }}
-                    placeholder="Filter: Country"
+                    allLabel="All"
+                    placeholder="All"
                     fetchOptions={searchFetcher("/masters/countries")}
                     fetchLabelForValue={fetchNameLabel("/masters/countries")}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: countryFilter ? "#475569" : "#94a3b8", marginBottom: "4px", display: "block" }}>Province / State</label>
-                  <SearchableDropdown
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Province / State</label>
+                  <SearchableFilterDropdown
                     value={stateFilter}
-                    disabled={!countryFilter}
                     onChange={(v) => {
                       setStateFilter(v);
                       setCityFilter(null);
                       setCurrentPage(1);
                     }}
-                    placeholder={countryFilter ? "Filter: Province / State" : "Select Country first"}
+                    allLabel="All"
+                    placeholder="All"
                     fetchOptions={
                       countryFilter
                         ? searchFetcher("/masters/states", (): Record<string, string> => ({
                             country_id: countryFilter,
                           }))
-                        : async () => []
+                        : searchFetcher("/masters/states")
                     }
                     fetchLabelForValue={fetchNameLabel("/masters/states")}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: stateFilter ? "#475569" : "#94a3b8", marginBottom: "4px", display: "block" }}>City</label>
-                  <SearchableDropdown
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>City</label>
+                  <SearchableFilterDropdown
                     value={cityFilter}
-                    disabled={!stateFilter}
                     onChange={(v) => {
                       setCityFilter(v);
                       setCurrentPage(1);
                     }}
-                    placeholder={stateFilter ? "Filter: City" : (countryFilter ? "Select Province first" : "Select Country first")}
+                    allLabel="All"
+                    placeholder="All"
                     fetchOptions={
-                      stateFilter
-                        ? searchFetcher("/masters/cities", (): Record<string, string> => ({
-                            state_id: stateFilter,
-                          }))
-                        : async () => []
+                      stateFilter || countryFilter
+                        ? searchFetcher("/masters/cities", (): Record<string, string> => {
+                            const p: Record<string, string> = {};
+                            if (stateFilter) p.state_id = stateFilter;
+                            else if (countryFilter) p.country_id = countryFilter;
+                            return p;
+                          })
+                        : searchFetcher("/masters/cities")
                     }
                     fetchLabelForValue={fetchNameLabel("/masters/cities")}
                   />
                 </div>
                 <div>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Supplier Type</label>
-                  <SearchableDropdown
+                  <SearchableFilterDropdown
                     value={supplierTypeFilter || null}
                     onChange={(_v, label) => {
                       setCurrentPage(1);
-                      setSupplierTypeFilter(label || _v || "");
+                      setSupplierTypeFilter(_v ? (label || _v) : "");
                     }}
-                    allowCustomText={true}
-                    onTextChange={(text) => {
-                      setCurrentPage(1);
-                      setSupplierTypeFilter(text);
-                    }}
-                    placeholder="Filter: Supplier Type"
+                    allLabel="All"
+                    placeholder="All"
                     fetchOptions={searchFetcher("/masters/supplier-types")}
                     fetchLabelForValue={async (val) => val}
                   />
@@ -4261,12 +4547,7 @@ export function SuppliersPage() {
                         Toggle Frozen Columns
                       </div>
                       <div style={{ maxHeight: "200px", overflowY: "auto", paddingRight: "4px" }}>
-                        {[
-                          "Checkbox", "Sr. No.", "Company Name", "Product Category",
-                          "Key Strength Sub-Category", "Products Supplied", "Secondary Products",
-                          "Country", "City, Province", "Brand", "Supplier Type",
-                          "Current Status", "Grade", "Potential", "Action"
-                        ].map((label, idx) => {
+                        {SUPPLIER_TABLE_COLUMNS.map((label, idx) => {
                           const isPinned = Boolean(pinnedCols[idx]);
                           return (
                             <label key={label} style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", cursor: "pointer", padding: "4px 0" }}>
@@ -4354,15 +4635,10 @@ export function SuppliersPage() {
                           </th>
                         );
                       }
-                      const label = [
-                        "Checkbox", "Sr. No.", "Company Name", "Product Category",
-                        "Key Strength Sub-Category", "Products Supplied", "Secondary Products",
-                        "Country", "City, Province", "Brand", "Supplier Type",
-                        "Current Status", "Grade", "Potential", "Action"
-                      ][idx];
+                      const label = SUPPLIER_TABLE_COLUMNS[idx];
                       const isPinned = Boolean(pinnedCols[idx]);
                       const isSrNo = idx === 1;
-                      const isAction = idx === 14;
+                      const isAction = idx === 10;
                       const isSorted = sortColIndex === idx;
                       return (
                         <th
@@ -4378,8 +4654,8 @@ export function SuppliersPage() {
                               : isAction
                               ? { textAlign: "center" }
                               : idx === 2
-                              ? { width: "290px", minWidth: "200px", maxWidth: "290px" }
-                              : idx === 11
+                              ? { width: "260px", minWidth: "200px", maxWidth: "270px" }
+                              : idx === 7
                               ? { width: "105px", minWidth: "95px", maxWidth: "115px" }
                               : {}),
                             ...getFreezeStyle(idx, true),
@@ -4464,7 +4740,7 @@ export function SuppliersPage() {
                   {loading ? (
                     <SupplierSkeletonRows count={8} displayOrder={displayOrder} getFreezeStyle={getFreezeStyle} />
                   ) : sortedRows.length === 0 ? (
-                    <TableMessageRow colSpan={15}>No suppliers found.</TableMessageRow>
+                    <TableMessageRow colSpan={11}>No suppliers found.</TableMessageRow>
                   ) : (
                     sortedRows.map((s, index) => (
                       <tr key={s.id}>
@@ -4496,66 +4772,133 @@ export function SuppliersPage() {
                                 <td
                                   key="cell-2"
                                   style={{
-                                    width: "290px",
+                                    width: "260px",
                                     minWidth: "200px",
-                                    maxWidth: "290px",
+                                    maxWidth: "270px",
                                     whiteSpace: "normal",
                                     height: "auto",
                                     verticalAlign: "middle",
                                     ...getFreezeStyle(2, false),
                                   }}
                                 >
-                                  <a
-                                    href="#"
-                                    title={s.company_name}
-                                    onClick={(e) => {
-                                      e.preventDefault();
-                                      void handleOpenDrawer(s);
-                                    }}
-                                    style={{
-                                      display: "-webkit-box",
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: "vertical",
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      wordBreak: "break-word",
-                                      lineHeight: "1.35",
-                                      maxHeight: "2.7em",
-                                      fontWeight: 600,
-                                      color: "#0061f2",
-                                      textDecoration: "none",
-                                    }}
-                                  >
-                                    {s.company_name}
-                                  </a>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+                                    <a
+                                      href="#"
+                                      title={s.company_name}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        void handleOpenDrawer(s);
+                                      }}
+                                      style={{
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: "vertical",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        wordBreak: "break-word",
+                                        lineHeight: "1.35",
+                                        maxHeight: "2.7em",
+                                        fontWeight: 600,
+                                        color: "#0061f2",
+                                        textDecoration: "none",
+                                      }}
+                                    >
+                                      {s.company_name}
+                                    </a>
+                                    {s.brand_description ? (
+                                      <div
+                                        title={`Brand: ${s.brand_description}`}
+                                        style={{
+                                          fontSize: "11px",
+                                          color: "#475569",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "4px",
+                                          lineHeight: 1.2,
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            background: "#f1f5f9",
+                                            color: "#334155",
+                                            padding: "1px 6px",
+                                            borderRadius: "3px",
+                                            fontWeight: 600,
+                                            border: "1px solid #e2e8f0",
+                                            maxWidth: "230px",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                            display: "inline-block",
+                                          }}
+                                        >
+                                          🏷️ {s.brand_description}
+                                        </span>
+                                      </div>
+                                    ) : null}
+                                  </div>
                                 </td>
                               );
                             case 3:
-                              return <td key="cell-3" style={getFreezeStyle(3, false)}>{chipList(s.category_ids, "categories", "Product Categories")}</td>;
-                            case 4:
-                              return <td key="cell-4" style={getFreezeStyle(4, false)}>{chipList(s.sub_category_ids, "subCategories", "Sub-Categories")}</td>;
-                            case 5:
-                              return <td key="cell-5" style={getFreezeStyle(5, false)}>{chipList(s.product_ids, "products", "Products Supplied")}</td>;
-                            case 6:
-                              return <td key="cell-6" style={getFreezeStyle(6, false)}>{renderTruncatedText(s.secondary_products_description, 20, "Secondary Products")}</td>;
-                            case 7:
-                              return <td key="cell-7" style={getFreezeStyle(7, false)}>{resolver.get("countries", s.country_id) || "…"}</td>;
-                            case 8:
                               return (
-                                <td key="cell-8" style={getFreezeStyle(8, false)}>
+                                <td key="cell-3" style={getFreezeStyle(3, false)}>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    <div>
+                                      {chipList(s.category_ids, "categories", "Categories", "🏷️")}
+                                    </div>
+                                    {s.sub_category_ids && s.sub_category_ids.length > 0 && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                                        <span style={{ color: "#94a3b8", fontSize: "11px", userSelect: "none", fontWeight: 700 }}>↳</span>
+                                        {chipList(s.sub_category_ids, "subCategories", "Sub-Categories", "📂")}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            case 4: {
+                              const hasProducts = s.product_ids && s.product_ids.length > 0;
+                              const hasSecondary = Boolean(s.secondary_products_description && s.secondary_products_description.trim());
+
+                              if (!hasProducts && !hasSecondary) {
+                                return (
+                                  <td key="cell-4" style={getFreezeStyle(4, false)}>
+                                    <span className="muted">—</span>
+                                  </td>
+                                );
+                              }
+
+                              return (
+                                <td key="cell-4" style={getFreezeStyle(4, false)}>
+                                  <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    {hasProducts && (
+                                      <div>
+                                        {chipList(s.product_ids, "products", "Products Supplied", "📦")}
+                                      </div>
+                                    )}
+                                    {hasSecondary && (
+                                      <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                                        {hasProducts && <span style={{ color: "#94a3b8", fontSize: "11px", userSelect: "none", fontWeight: 700 }}>↳</span>}
+                                        {renderTruncatedText(s.secondary_products_description, 20, "Secondary Products", "📦")}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            }
+                            case 5:
+                              return (
+                                <td key="cell-5" style={getFreezeStyle(5, false)}>
                                   {resolver.get("cities", s.city_id) || "…"},{" "}
                                   {resolver.get("states", s.state_id) || "…"}
                                 </td>
                               );
-                            case 9:
-                              return <td key="cell-9" style={getFreezeStyle(9, false)}>{renderTruncatedText(s.brand_description, 20, "Brand Description")}</td>;
-                            case 10:
+                            case 6:
                               return (
-                                <td key="cell-10" style={getFreezeStyle(10, false)}>
+                                <td key="cell-6" style={getFreezeStyle(6, false)}>
                                   {s.supplier_type ? s.supplier_type : <span className="muted">—</span>}
                                 </td>
                               );
-                            case 11: {
+                            case 7: {
                               const currStatus = (s.current_status || "").toLowerCase();
                               const isExisting = currStatus === "existing";
                               const isNew = currStatus === "new";
@@ -4563,7 +4906,7 @@ export function SuppliersPage() {
                               const statusColor = isExisting ? "#15803d" : isNew ? "#854d0e" : "#64748b";
 
                               return (
-                                <td key="cell-11" style={{ width: "115px", minWidth: "105px", maxWidth: "125px", ...getFreezeStyle(11, false) }}>
+                                <td key="cell-7" style={{ width: "115px", minWidth: "105px", maxWidth: "125px", ...getFreezeStyle(7, false) }}>
                                   {canEditCurrentStatus ? (
                                     <select
                                       className="inline-select"
@@ -4606,9 +4949,9 @@ export function SuppliersPage() {
                                 </td>
                               );
                             }
-                            case 12:
+                            case 8:
                               return (
-                                <td key="cell-12" style={getFreezeStyle(12, false)}>
+                                <td key="cell-8" style={getFreezeStyle(8, false)}>
                                   {canEditGrade ? (
                                     <select
                                       className="inline-select"
@@ -4629,9 +4972,9 @@ export function SuppliersPage() {
                                   )}
                                 </td>
                               );
-                            case 13:
+                            case 9:
                               return (
-                                <td key="cell-13" style={getFreezeStyle(13, false)}>
+                                <td key="cell-9" style={getFreezeStyle(9, false)}>
                                   {canEditPotential ? (
                                     <select
                                       className="inline-select"
@@ -4651,9 +4994,9 @@ export function SuppliersPage() {
                                   )}
                                 </td>
                               );
-                            case 14:
+                            case 10:
                               return (
-                                <td key="cell-14" className="actions" style={{ textAlign: "center", ...getFreezeStyle(14, false) }}>
+                                <td key="cell-10" className="actions" style={{ textAlign: "center", ...getFreezeStyle(10, false) }}>
                                   <div style={{ display: "flex", gap: "6px", justifyContent: "center", alignItems: "center" }}>
                                     {canUpdate && (
                                       <button
@@ -4761,73 +5104,328 @@ export function SuppliersPage() {
         }}
       />
 
-      {drawerSupplier && (
-        <SideDrawer
-          open={Boolean(drawerSupplier)}
-          title={`Supplier Detail #${drawerSupplier.company_name}`}
-          subtitle={`Supplier Type: ${drawerSupplier.supplier_type || "—"} | Status: ${drawerSupplier.is_active ? "Active" : "Inactive"}`}
-          onClose={handleCloseDrawer}
-          onEdit={
-            canUpdate
-              ? () => {
-                const id = drawerSupplier.id;
-                handleCloseDrawer();
-                void handleRowEdit(id);
-              }
-              : undefined
-          }
-          editLabel="✏️ Edit Supplier"
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <DetailFieldGrid
-              fields={[
-                { label: "Company Name", value: drawerSupplier.company_name, fullWidth: true },
-                { label: "Supplier Type", value: drawerSupplier.supplier_type || "—" },
-                { label: "Brand Description", value: drawerSupplier.brand_description || "—" },
-                { label: "Country", value: resolver.get("countries", drawerSupplier.country_id) || "—" },
-                { label: "Province / State", value: resolver.get("states", drawerSupplier.state_id) || "—" },
-                { label: "City", value: resolver.get("cities", drawerSupplier.city_id) || "—" },
-                { label: "Product Categories", value: chipList(drawerSupplier.category_ids, "categories"), fullWidth: true },
-                { label: "Sub-Categories", value: chipList(drawerSupplier.sub_category_ids, "subCategories"), fullWidth: true },
-                { label: "Products Supplied", value: chipList(drawerSupplier.product_ids, "products"), fullWidth: true },
-                { label: "Secondary Products", value: drawerSupplier.secondary_products_description || "—", fullWidth: true },
-                { label: "Address", value: drawerSupplier.address || "—", fullWidth: true },
-              ]}
-            />
+      {drawerSupplier && (() => {
+        const visitMediaRaw = drawerSupplier.visit_media || [];
+        const photoUrls = visitMediaRaw.filter((u) => !u.startsWith("http") || u.match(/\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i) || u.includes("/storage/v1/object/public/"));
+        const videoUrls = visitMediaRaw.filter((u) => u.startsWith("http") && !u.match(/\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i) && !u.includes("/storage/v1/object/public/"));
 
-            <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-              <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 12px 0", color: "#0f172a" }}>
-                Primary Contact Information
-              </h4>
-              <DetailFieldGrid
-                fields={[
-                  {
-                    label: "Full Name",
-                    value: `${drawerSupplier.contact_salutation || ""} ${drawerSupplier.contact_full_name || ""}`.trim() || "—",
-                  },
-                  { label: "Designation", value: drawerSupplier.contact_designation || "—" },
-                  { label: "Calling Number", value: drawerSupplier.contact_calling_number || "—" },
-                  { label: "WhatsApp Number", value: drawerSupplier.contact_whatsapp_number || "—" },
-                  { label: "WeChat Number", value: drawerSupplier.contact_wechat_number || "—" },
-                  { label: "Email Addresses", value: drawerSupplier.emails && drawerSupplier.emails.length ? drawerSupplier.emails.join(", ") : "—", fullWidth: true },
-                  { label: "Primary Website", value: drawerSupplier.primary_website || "—" },
-                  { label: "Secondary Website", value: drawerSupplier.secondary_website || "—" },
-                ]}
-              />
+        return (
+          <SideDrawer
+            open={Boolean(drawerSupplier)}
+            title={`Supplier Detail #${drawerSupplier.company_name}`}
+            subtitle={`Supplier Type: ${drawerSupplier.supplier_type || "—"} | Status: ${drawerSupplier.is_active ? "Active" : "Inactive"}`}
+            onClose={handleCloseDrawer}
+            cardStyle={{ maxWidth: "720px", width: "100%" }}
+            onEdit={
+              canUpdate
+                ? () => {
+                  const id = drawerSupplier.id;
+                  handleCloseDrawer();
+                  void handleRowEdit(id);
+                }
+                : undefined
+            }
+            editLabel="✏️ Edit Supplier"
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* CARD 1: Company Profile & Classification */}
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 12px 0", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                  🏢 Company Profile &amp; Classification
+                </h4>
+                <DetailFieldGrid
+                  fields={[
+                    { label: "Company Name", value: drawerSupplier.company_name, fullWidth: true },
+                    { label: "Supplier Type", value: drawerSupplier.supplier_type ? drawerSupplier.supplier_type.toUpperCase() : "—" },
+                    { label: "Brand Description", value: drawerSupplier.brand_description || "—" },
+                    { label: "Tax ID / GST Number", value: drawerSupplier.tax_id_number || "—" },
+                    { label: "Town", value: drawerSupplier.town || "—" },
+                    { label: "Country", value: resolver.get("countries", drawerSupplier.country_id) || "—" },
+                    { label: "Province / State", value: resolver.get("states", drawerSupplier.state_id) || "—" },
+                    { label: "City", value: resolver.get("cities", drawerSupplier.city_id) || "—" },
+                    { label: "Address", value: drawerSupplier.address || "—", fullWidth: true },
+                    { label: "Product Categories", value: chipList(drawerSupplier.category_ids, "categories"), fullWidth: true },
+                    { label: "Sub-Categories", value: chipList(drawerSupplier.sub_category_ids, "subCategories"), fullWidth: true },
+                    { label: "Products Supplied", value: chipList(drawerSupplier.product_ids, "products"), fullWidth: true },
+                    { label: "Secondary Products", value: drawerSupplier.secondary_products_description || "—", fullWidth: true },
+                  ]}
+                />
+              </div>
+
+              {/* CARD 2: Primary Contact & Websites */}
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 12px 0", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                  👤 Primary Contact Information
+                </h4>
+                <DetailFieldGrid
+                  fields={[
+                    {
+                      label: "Contact Person",
+                      value: `${drawerSupplier.contact_salutation || ""} ${drawerSupplier.contact_full_name || ""}`.trim() || "—",
+                    },
+                    { label: "Designation", value: drawerSupplier.contact_designation || "—" },
+                    {
+                      label: "Calling Number",
+                      value: drawerSupplier.contact_calling_number ? (
+                        <a href={`tel:${drawerSupplier.contact_calling_number}`} style={{ color: "#0061f2", textDecoration: "none", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          📞 {drawerSupplier.contact_calling_number}
+                        </a>
+                      ) : "—",
+                    },
+                    {
+                      label: "WhatsApp Number",
+                      value: drawerSupplier.contact_whatsapp_number ? (
+                        <a
+                          href={`https://wa.me/${drawerSupplier.contact_whatsapp_number.replace(/[^0-9]/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        >
+                          💬 {drawerSupplier.contact_whatsapp_number} ↗
+                        </a>
+                      ) : "—",
+                    },
+                    {
+                      label: "WeChat Number",
+                      value: drawerSupplier.contact_wechat_number ? (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "#059669", fontWeight: 500 }}>
+                          🗨️ {drawerSupplier.contact_wechat_number}
+                        </span>
+                      ) : "—",
+                    },
+                    {
+                      label: "Email Addresses",
+                      value: drawerSupplier.emails && drawerSupplier.emails.length ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {drawerSupplier.emails.map((em) => (
+                            <a
+                              key={em}
+                              href={`mailto:${em}`}
+                              style={{
+                                color: "#2563eb",
+                                background: "#eff6ff",
+                                border: "1px solid #bfdbfe",
+                                borderRadius: "4px",
+                                padding: "2px 8px",
+                                fontSize: "12.5px",
+                                fontWeight: 500,
+                                textDecoration: "none",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "4px",
+                              }}
+                            >
+                              ✉️ {em}
+                            </a>
+                          ))}
+                        </div>
+                      ) : "—",
+                      fullWidth: true,
+                    },
+                    {
+                      label: "Primary Website",
+                      value: drawerSupplier.primary_website ? (
+                        <a
+                          href={drawerSupplier.primary_website.startsWith("http") ? drawerSupplier.primary_website : `https://${drawerSupplier.primary_website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "#0284c7", textDecoration: "none", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        >
+                          🌐 {drawerSupplier.primary_website.replace(/^https?:\/\/(www\.)?/, "")} ↗
+                        </a>
+                      ) : "—",
+                    },
+                    {
+                      label: "Secondary Website",
+                      value: drawerSupplier.secondary_website ? (
+                        <a
+                          href={drawerSupplier.secondary_website.startsWith("http") ? drawerSupplier.secondary_website : `https://${drawerSupplier.secondary_website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ color: "#0284c7", textDecoration: "none", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        >
+                          🌐 {drawerSupplier.secondary_website.replace(/^https?:\/\/(www\.)?/, "")} ↗
+                        </a>
+                      ) : "—",
+                    },
+                  ]}
+                />
+              </div>
+
+              {/* CARD 3: Factory Visit & Media */}
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 12px 0", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                  🏭 Factory Visit &amp; Inspection Media
+                </h4>
+                <DetailFieldGrid
+                  fields={[
+                    {
+                      label: "Visited Factory / Office",
+                      value: drawerSupplier.visited_factory_office ? (
+                        <span style={{ background: "#dcfce7", color: "#15803d", padding: "2px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: 600 }}>
+                          ✓ Yes, Visited
+                        </span>
+                      ) : (
+                        <span style={{ background: "#f1f5f9", color: "#64748b", padding: "2px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: 600 }}>
+                          No
+                        </span>
+                      ),
+                    },
+                    {
+                      label: "Visit Remarks",
+                      value: drawerSupplier.visit_remarks || "—",
+                    },
+                    {
+                      label: "Factory Video / Inspection Folder Links",
+                      value: videoUrls.length > 0 ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                          {videoUrls.map((url, idx) => {
+                            const meta = getMediaBadge(url);
+                            return (
+                              <a
+                                key={idx}
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  background: meta.bg,
+                                  border: `1px solid ${meta.border}`,
+                                  color: meta.text,
+                                  borderRadius: "6px",
+                                  padding: "4px 10px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  textDecoration: "none",
+                                }}
+                              >
+                                <span>{meta.icon}</span>
+                                <span>{meta.label}</span>
+                                <span style={{ fontSize: "11px", opacity: 0.8 }}>↗</span>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      ) : "—",
+                      fullWidth: true,
+                    },
+                    ...(photoUrls.length > 0
+                      ? [
+                        {
+                          label: "Factory Photos / Media Attachments",
+                          value: (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                              {photoUrls.map((pUrl, pIdx) => (
+                                <a
+                                  key={pIdx}
+                                  href={pUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{
+                                    display: "inline-block",
+                                    width: "68px",
+                                    height: "68px",
+                                    borderRadius: "6px",
+                                    overflow: "hidden",
+                                    border: "1px solid #cbd5e1",
+                                  }}
+                                >
+                                  <img src={pUrl} alt={`Visit attachment ${pIdx + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                </a>
+                              ))}
+                            </div>
+                          ),
+                          fullWidth: true,
+                        },
+                      ]
+                      : []),
+                  ]}
+                />
+              </div>
+
+              {/* CARD 4: Pipeline Status & Evaluation */}
+              <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+                <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 12px 0", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                  📊 Pipeline Status &amp; Commercial Evaluation
+                </h4>
+                <DetailFieldGrid
+                  fields={[
+                    { label: "Supplier Grade", value: drawerSupplier.supplier_grade ? `Grade ${drawerSupplier.supplier_grade.toUpperCase()}` : "—" },
+                    { label: "Current Status", value: <StatusPill value={drawerSupplier.current_status} /> },
+                    {
+                      label: "Potential (Yes / No)",
+                      value: drawerSupplier.potential ? (
+                        <span
+                          style={{
+                            background: drawerSupplier.potential.toLowerCase() === "yes" ? "#dcfce7" : "#fee2e2",
+                            color: drawerSupplier.potential.toLowerCase() === "yes" ? "#166534" : "#991b1b",
+                            padding: "2px 8px",
+                            borderRadius: "4px",
+                            fontSize: "12px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {drawerSupplier.potential.toUpperCase()}
+                        </span>
+                      ) : "—",
+                    },
+                    { label: "Reason for Potential Status", value: drawerSupplier.potential_reason || "—", fullWidth: true },
+                    { label: "Overall Remarks / Key Strengths", value: drawerSupplier.overall_remarks || "—", fullWidth: true },
+                  ]}
+                />
+              </div>
+
+              {/* CARD 5: Additional Contacts */}
+              {drawerSupplier.contacts && drawerSupplier.contacts.length > 0 && (
+                <div style={{ background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "16px", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+                  <h4 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 12px 0", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                    👥 Additional Contacts ({drawerSupplier.contacts.length})
+                  </h4>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {drawerSupplier.contacts.map((c, i) => (
+                      <div key={c.id || i} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "8px", padding: "12px 16px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "6px" }}>
+                          <div>
+                            <span style={{ fontWeight: 700, color: "#0f172a", fontSize: "13.5px" }}>
+                              {c.salutation ? `${c.salutation} ` : ""}{c.person_name}
+                            </span>
+                            {c.designation && <span style={{ color: "#64748b", fontSize: "12.5px", marginLeft: "6px" }}>• {c.designation}</span>}
+                          </div>
+                          {c.handling_territory && (
+                            <span style={{ fontSize: "11px", fontWeight: 600, background: "#e0f2fe", color: "#0369a1", padding: "1px 6px", borderRadius: "4px" }}>
+                              📍 {c.handling_territory}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", fontSize: "12.5px", color: "#334155" }}>
+                          {c.calling_number && (
+                            <a href={`tel:${c.calling_number}`} style={{ color: "#0061f2", textDecoration: "none", fontWeight: 500 }}>
+                              📞 {c.calling_number}
+                            </a>
+                          )}
+                          {c.whatsapp_number && (
+                            <a href={`https://wa.me/${c.whatsapp_number.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500 }}>
+                              💬 {c.whatsapp_number}
+                            </a>
+                          )}
+                          {c.wechat_number && <span>🗨️ {c.wechat_number}</span>}
+                          {c.email && (
+                            <a href={`mailto:${c.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
+                              ✉️ {c.email}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-
-            <DetailFieldGrid
-              fields={[
-                { label: "Supplier Grade", value: drawerSupplier.supplier_grade || "—" },
-                { label: "Current Status", value: <StatusPill value={drawerSupplier.current_status} /> },
-                { label: "Potential", value: drawerSupplier.potential || "—" },
-                { label: "Visited Factory/Office", value: drawerSupplier.visited_factory_office ? "Yes" : "No" },
-                { label: "Overall Remarks", value: drawerSupplier.overall_remarks || "—", fullWidth: true },
-              ]}
-            />
-          </div>
-        </SideDrawer>
-      )}
+          </SideDrawer>
+        );
+      })()}
 
       <TrashConflictModal
         isOpen={Boolean(trashConflict)}

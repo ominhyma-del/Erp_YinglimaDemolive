@@ -9,11 +9,10 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { useAuth } from "@/lib/auth";
-import { Breadcrumb } from "@/components/Breadcrumb";
 import { Pagination } from "@/components/Pagination";
 import { SideDrawer, DetailFieldGrid } from "@/components/SideDrawer";
 import { Banner, Modal } from "@/components/ui";
-import { SearchableDropdown } from "@/components/SearchableDropdown";
+import { SearchableDropdown, SearchableFilterDropdown } from "@/components/SearchableDropdown";
 import { ProductTradeHistoryDrawer } from "@/components/ProductTradeHistoryDrawer";
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, API_ORIGIN, downloadExport, toQueryString } from "@/lib/api";
 import { useLookup } from "@/lib/lookups";
@@ -1014,6 +1013,19 @@ export function ProductPricesPage() {
     setDrawerProduct(null);
   };
 
+  useEffect(() => {
+    const handleNavActiveClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{ key?: string; path?: string }>;
+      if (customEvent.detail?.key === "product-prices") {
+        setHistoryDrawerOpen(false);
+        closeProductDrawer();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+    window.addEventListener("erp:nav-active-click", handleNavActiveClick);
+    return () => window.removeEventListener("erp:nav-active-click", handleNavActiveClick);
+  }, []);
+
   // Export with active filters and direct file download
   const handleExport = async (format: "xlsx" | "csv") => {
     setExporting(true);
@@ -1045,19 +1057,14 @@ export function ProductPricesPage() {
   return (
     <AppShell activeKey="product-prices">
       <main className="page">
-        <Breadcrumb trail={["Inventory", "Product Prices"]} />
-
         {/* Page Header */}
         <div className="page-header" style={{ marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <h1 style={{ margin: 0 }}>Product Price Directory</h1>
+              <h1 className="page-title">Product Prices</h1>
               <span className="badge badge-info" style={{ fontSize: "12px", padding: "4px 8px" }}>
                 {totalItems} Products
               </span>
-            </div>
-            <div className="page-subtitle" style={{ marginTop: "4px" }}>
-              Search, compare, and inline-edit supplier purchase prices across all catalog items.
             </div>
           </div>
 
@@ -1283,86 +1290,74 @@ export function ProductPricesPage() {
               {/* Category Filter */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>Category</label>
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => {
-                    setCategoryFilter(e.target.value);
+                <SearchableFilterDropdown
+                  value={categoryFilter || null}
+                  onChange={(val) => {
+                    setCategoryFilter(val || "");
                     setSubCategoryFilter("");
                     setPage(1);
                   }}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                    fontSize: "13.5px",
-                    background: "#ffffff",
-                    color: "#1e293b",
-                    width: "100%",
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={async (term) => {
+                    const q = term.toLowerCase().trim();
+                    return categories.items
+                      .filter((c) => !q || c.name.toLowerCase().includes(q))
+                      .map((c) => ({ value: c.id, label: c.name }));
                   }}
-                >
-                  <option value="">All</option>
-                  {categories.items.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  fetchLabelForValue={async (val) => {
+                    const c = categories.items.find((item) => item.id === val);
+                    return c ? c.name : "";
+                  }}
+                />
               </div>
 
               {/* Sub Category Filter */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>Sub Category</label>
-                <select
-                  value={subCategoryFilter}
-                  onChange={(e) => {
-                    setSubCategoryFilter(e.target.value);
+                <SearchableFilterDropdown
+                  value={subCategoryFilter || null}
+                  onChange={(val) => {
+                    setSubCategoryFilter(val || "");
                     setPage(1);
                   }}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                    fontSize: "13.5px",
-                    background: "#ffffff",
-                    color: "#1e293b",
-                    width: "100%",
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={async (term) => {
+                    const q = term.toLowerCase().trim();
+                    return scopedSubCategories
+                      .filter((sc) => !q || sc.name.toLowerCase().includes(q) || (sc.code && sc.code.toLowerCase().includes(q)))
+                      .map((sc) => ({ value: sc.id, label: sc.name }));
                   }}
-                >
-                  <option value="">All</option>
-                  {scopedSubCategories.map((sc) => (
-                    <option key={sc.id} value={sc.id}>
-                      {sc.name}
-                    </option>
-                  ))}
-                </select>
+                  fetchLabelForValue={async (val) => {
+                    const sc = subCategories.items.find((item) => item.id === val);
+                    return sc ? sc.name : "";
+                  }}
+                />
               </div>
 
               {/* Brand Filter */}
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>Brand</label>
-                <select
-                  value={brandFilter}
-                  onChange={(e) => {
-                    setBrandFilter(e.target.value);
+                <SearchableFilterDropdown
+                  value={brandFilter || null}
+                  onChange={(val) => {
+                    setBrandFilter(val || "");
                     setPage(1);
                   }}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: "6px",
-                    border: "1px solid #cbd5e0",
-                    fontSize: "13.5px",
-                    background: "#ffffff",
-                    color: "#1e293b",
-                    width: "100%",
+                  placeholder="All"
+                  allLabel="All"
+                  fetchOptions={async (term) => {
+                    const q = term.toLowerCase().trim();
+                    return brands.items
+                      .filter((b) => !q || b.name.toLowerCase().includes(q))
+                      .map((b) => ({ value: b.id, label: b.name }));
                   }}
-                >
-                  <option value="">All</option>
-                  {brands.items.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
+                  fetchLabelForValue={async (val) => {
+                    const b = brands.items.find((item) => item.id === val);
+                    return b ? b.name : "";
+                  }}
+                />
               </div>
 
               {/* Pricing Status Filter */}

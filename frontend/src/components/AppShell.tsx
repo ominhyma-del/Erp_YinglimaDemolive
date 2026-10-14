@@ -27,10 +27,10 @@ import {
 } from "@/lib/nav";
 import { getCachedBrandName, resolveBrandName, subscribeBrandName } from "@/lib/brand";
 import { ICONS, IconBell, IconChevronDown, IconChevronRight } from "./icons";
-import { UniversalSearch } from "./UniversalSearch";
 import { EcosystemSwitcher } from "./EcosystemSwitcher";
-import { processIncomingSsoHandover } from "@/lib/ssoBridge";
-import { globalEcosystemLogout, initEcosystemSessionWatcher } from "@/lib/ecosystemSession";
+import { processIncomingSsoHandover, routeForCentralSession } from "@/lib/ssoBridge";
+import { getEcosystemCookie, globalEcosystemLogout, initEcosystemSessionWatcher, isExplicitlyLoggedOut, setEcosystemCookie, verifyCentralEcosystemSession } from "@/lib/ecosystemSession";
+
 import { ErrorBanner } from "./ui";
 import type { Profile } from "@/types";
 
@@ -632,6 +632,15 @@ function Sidebar({
                                 background: isChildActive ? "#e0edff" : "transparent",
                                 transition: "all 0.12s ease",
                               }}
+                              onClick={() => {
+                                if (isChildActive) {
+                                  window.dispatchEvent(
+                                    new CustomEvent("erp:nav-active-click", {
+                                      detail: { key: child.key, path: child.path },
+                                    })
+                                  );
+                                }
+                              }}
                             >
                               <span>{child.label}</span>
                             </Link>
@@ -644,12 +653,22 @@ function Sidebar({
               }
 
               const Icon = ICONS[item.icon];
+              const isItemActive = item.key === activeKey;
               return (
                 <Link
                   key={item.key}
                   to={item.path || "#"}
-                  className={`nav-item ${item.key === activeKey ? "active" : ""}`}
+                  className={`nav-item ${isItemActive ? "active" : ""}`}
                   title={collapsed ? item.label : undefined}
+                  onClick={() => {
+                    if (isItemActive) {
+                      window.dispatchEvent(
+                        new CustomEvent("erp:nav-active-click", {
+                          detail: { key: item.key, path: item.path },
+                        })
+                      );
+                    }
+                  }}
                 >
                   <Icon />
                   <span className="nav-label">{item.label}</span>
@@ -730,7 +749,6 @@ function Topbar() {
 
   return (
     <header className="topbar">
-      <UniversalSearch />
       <div className="topbar-spacer" />
       <div className="topbar-actions" ref={popoverRef} style={{ position: "relative", display: "flex", alignItems: "center", gap: "10px" }}>
         <EcosystemSwitcher currentKey="yinglima" />
@@ -998,10 +1016,13 @@ export function AppShell({ activeKey, children, pageClassName }: AppShellProps) 
   const loggedIn = Auth.isLoggedIn();
 
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!loggedIn || !Auth.shouldSyncProfile()) return;
     apiGet<Profile>("/auth/profile")
       .then((res) => {
-        if (res && res.data) Auth.updateProfile(res.data);
+        if (res && res.data) {
+          Auth.updateProfile(res.data);
+          Auth.markProfileSynced();
+        }
       })
       .catch(() => {
         /* profile refresh fallback */
@@ -1061,7 +1082,43 @@ export function AppShell({ activeKey, children, pageClassName }: AppShellProps) 
 
   useEffect(() => {
     if (loggedIn) {
+      const currentSid = Auth.getSessionId();
+      if (isExplicitlyLoggedOut(currentSid || undefined)) {
+        Auth.clear();
+        navigate("/login", { replace: true });
+        return;
+      }
       setSsoCheckPending(false);
+      const cookie = getEcosystemCookie();
+
+      if (cookie?.session_id) {
+        const allowed = (cookie.allowed_erps || []).map((k) => String(k).toLowerCase());
+        const role = cookie.role?.toLowerCase();
+        const hasErpAccess = role === "super_admin" || allowed.includes("*") || allowed.includes("yinglima");
+        if (!hasErpAccess) {
+          verifyCentralEcosystemSession(cookie.session_id)
+            .then((res) => {
+              if (res.active && res.session) {
+                const liveAllowed = (res.session.allowed_erps || []).map((k) => String(k).toLowerCase());
+                if (liveAllowed.includes("*") || liveAllowed.includes("yinglima")) {
+                  setEcosystemCookie({
+                    ...cookie,
+                    allowed_erps: res.session.allowed_erps,
+                  });
+                  return;
+                }
+              }
+              Auth.clear();
+              const route = routeForCentralSession("yinglima", res.session || cookie);
+              if (route.kind === "redirect" && typeof window !== "undefined") {
+                window.location.replace(route.url);
+              }
+            })
+            .catch(() => {
+              // Maintain local session if central re-verification network is unreachable
+            });
+        }
+      }
       return;
     }
     let cancelled = false;
@@ -1095,7 +1152,10 @@ export function AppShell({ activeKey, children, pageClassName }: AppShellProps) 
         </div>
       );
     }
-    return <Navigate to={`/login${location.search}`} replace state={{ from: location.pathname }} />;
+    const cleanParams = new URLSearchParams(location.search);
+    cleanParams.delete("sso_handover");
+    const cleanSearch = cleanParams.toString() ? `?${cleanParams.toString()}` : "";
+    return <Navigate to={`/login${cleanSearch}`} replace state={{ from: location.pathname }} />;
   }
 
   const navItem = NAV_ITEMS_BY_KEY[activeKey];

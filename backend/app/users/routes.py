@@ -22,6 +22,7 @@ from app.auth.schemas import SessionRead
 from app.auth.service import AuthService, CurrentUser
 from app.common.pagination import PageMeta, PageParams
 from app.core.exceptions import BadRequestException, ForbiddenException
+from app.federation.erp_main_client import push_password_to_erp_main
 from app.core.responses import build_success_response
 from app.database.session import get_db_session
 from app.integration.jobs import enqueue_dispatch
@@ -123,6 +124,75 @@ async def _user_with_roles(
     return UserWithRoles(**user_dict)
 
 
+async def _batch_users_with_roles(
+    users: list[User], db: AsyncSession
+) -> list[dict]:
+    """Batch-load roles, managers, and positions for a page of users in 3 batched queries instead of N*4 queries."""
+    if not users:
+        return []
+
+    from sqlalchemy import select
+    from app.rbac.models import UserRole, Role
+    from app.org_structure.models import EmployeePositionAssignment, Position, OrgRecordStatus
+
+    user_ids = [u.id for u in users]
+
+    # 1. Batch fetch roles for all users in one query
+    roles_stmt = (
+        select(UserRole.user_id, Role.name)
+        .join(Role, Role.id == UserRole.role_id)
+        .where(UserRole.user_id.in_(user_ids))
+    )
+    roles_res = await db.execute(roles_stmt)
+    roles_by_user: dict[uuid.UUID, list[str]] = {}
+    for uid, rname in roles_res.all():
+        roles_by_user.setdefault(uid, []).append(rname)
+
+    # 2. Batch fetch managers for all users in one query
+    manager_ids = {u.manager_id for u in users if u.manager_id}
+    mgr_map: dict[uuid.UUID, str] = {}
+    if manager_ids:
+        mgr_stmt = select(User.id, User.full_name).where(User.id.in_(manager_ids))
+        mgr_res = await db.execute(mgr_stmt)
+        mgr_map = dict(mgr_res.all())
+
+    # 3. Batch fetch positions for all users in one query
+    pos_map: dict[uuid.UUID, tuple[uuid.UUID, str]] = {}
+    try:
+        pos_stmt = (
+            select(
+                EmployeePositionAssignment.employee_id,
+                Position.id,
+                Position.name,
+                EmployeePositionAssignment.is_primary,
+            )
+            .join(Position, EmployeePositionAssignment.position_id == Position.id)
+            .where(
+                EmployeePositionAssignment.employee_id.in_(user_ids),
+                EmployeePositionAssignment.status == OrgRecordStatus.ACTIVE,
+            )
+        )
+        pos_res = await db.execute(pos_stmt)
+        # Sort so primary positions override fallback ones
+        for emp_id, pid, pname, is_pri in sorted(pos_res.all(), key=lambda row: 1 if row[3] else 0):
+            pos_map[emp_id] = (pid, pname)
+    except Exception:
+        pass
+
+    items = []
+    for u in users:
+        user_dict = UserRead.model_validate(u).model_dump()
+        user_dict["roles"] = roles_by_user.get(u.id) or ["user"]
+        user_dict["employee_name"] = u.full_name
+        user_dict["manager_name"] = mgr_map.get(u.manager_id) if u.manager_id else None
+        pos_info = pos_map.get(u.id)
+        user_dict["position_id"] = pos_info[0] if pos_info else None
+        user_dict["position_name"] = pos_info[1] if pos_info else None
+        items.append(UserWithRoles(**user_dict).model_dump(mode="json"))
+
+    return items
+
+
 async def _record_user_action(
     *,
     audit_service: AuditService,
@@ -220,10 +290,7 @@ async def list_users(
         query=query,
         status=status,
     )
-    items = []
-    for u in users:
-        u_with_roles = await _user_with_roles(u, rbac_service, db=db)
-        items.append(u_with_roles.model_dump(mode="json"))
+    items = await _batch_users_with_roles(users, db=db)
     data = {
         "items": items,
         "total": total,
@@ -362,6 +429,23 @@ async def get_user(
     return build_success_response(data=data, request_id=request.state.request_id)
 
 
+async def enforce_central_identity(user_service, user_id: uuid.UUID, payload) -> None:
+    """
+    A user's email is their central identity (it is how ERP_Main and SSO match accounts), so it is
+    managed in the ERP_Main Control Panel.  Re-sending the CURRENT email (e.g. a form that posts every
+    field) is harmless; CHANGING it here is refused.  Names, phone, manager, position, etc. stay local.
+    """
+    if "email" not in payload.model_fields_set or payload.email is None:
+        return
+    current = await user_service.user_repository.get_by_id(user_id)
+    if current is None:
+        return
+    if (current.email or "").strip().lower() != str(payload.email).strip().lower():
+        raise ForbiddenException(
+            "A user's email is managed centrally. Please change it from the ERP_Main Control Panel."
+        )
+
+
 @router.patch("/{user_id}", summary="Update a user's profile")
 async def update_user(
     user_id: uuid.UUID,
@@ -376,6 +460,8 @@ async def update_user(
     if current_user.id != user_id and "user.action" not in current_user.permissions and not current_user.is_super_admin:
         from app.core.exceptions import ForbiddenException
         raise ForbiddenException("You do not have permission to modify this user account.")
+
+    await enforce_central_identity(user_service, user_id, payload)
 
     position_id_specified = "position_id" in payload.model_fields_set
     target_position_id = payload.position_id if position_id_specified else None
@@ -457,6 +543,10 @@ async def reset_password(
     password_set = await user_service.admin_reset_password(
         user_id, custom_password=custom_pwd, must_change_password=must_change, reset_by=current_user.id
     )
+    # One password per person across ERP_Main and every ERP (best effort; never fails the reset).
+    target = await user_service.user_repository.get_by_id(user_id)
+    if target is not None and target.email and password_set:
+        await push_password_to_erp_main(target.email, password_set)
     await _record_user_action(
         audit_service=audit_service,
         request=request,

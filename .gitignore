@@ -42,8 +42,8 @@ uploads/
 
 # Local scratch scripts and artifacts
 scratch/
- 
-# Backups and standalone git backup
+
+# Backups and archives
 backups/
 .git_standalone_backup/
-
+*.tgz

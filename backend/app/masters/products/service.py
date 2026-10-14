@@ -135,6 +135,29 @@ class ProductService:
             for r in rows
         ]
 
+    async def list_products_lookup(self, limit: int = 1000) -> list[dict[str, str]]:
+        """Return lightweight active products {id, name, product_name, product_code} for fast UI lookups."""
+        from sqlalchemy import select
+        stmt = (
+            select(Product.id, Product.product_name_tally, Product.product_name, Product.product_code)
+            .where(Product.deleted_at.is_(None))
+            .where(Product.status == "active")
+            .order_by(Product.product_name_tally.asc())
+            .limit(limit)
+        )
+        res = await self.repository.session.execute(stmt)
+        rows = res.all()
+        return [
+            {
+                "id": str(r.id),
+                "name": r.product_name or r.product_name_tally or "",
+                "product_name": r.product_name or r.product_name_tally or "",
+                "product_code": r.product_code or "",
+                "code": r.product_code or "",
+            }
+            for r in rows
+        ]
+
     async def _invalidate_cache(self) -> None:
         """Invalidate the products dropdown cache after any mutation."""
         await self.cache_manager.invalidate_dropdown(DROPDOWN_CACHE_NAME)

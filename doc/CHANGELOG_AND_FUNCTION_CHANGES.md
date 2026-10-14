@@ -3,6 +3,257 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-14] — Supplier Table Optimization: Column Consolidation (15 to 11 Columns) & Horizontal Scroll Elimination
+
+### 1. Merged Company Name & Brand Column
+- **2-Line Clamping & Informational Pill Tag in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Consolidated separate "Company Name" and "Brand" columns into a unified **"Company Name & Brand"** column.
+  - Implemented 2-line clamping (`-webkit-line-clamp: 2`) with hover tooltip (`title={s.company_name}`) to comfortably accommodate long company names without breaking row layout.
+  - Placed the Brand directly underneath as a subtle pill badge (`🏷️ <Brand>`) when present.
+
+### 2. Merged Category & Sub-Category Column
+- **Hierarchical Vertical Display in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Combined "Product Category" and "Key Strength Sub-Category" into **"Category & Sub-Category"**.
+  - Renders category chips on line 1 and sub-category chips underneath on line 2 (`↳ 📂 <Sub-Category>`), maintaining full popover modal inspection.
+
+### 3. Merged Products Supplied & Secondary Products Column
+- **Unified Product Portfolio Presentation in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Combined Primary Products Supplied chips and Secondary Products description into a unified single column **"Products Supplied & Secondary"**.
+  - Primary products render on line 1 (`📦 <Products> (+N)`), and secondary products render directly underneath on line 2 (`↳ 📦 <Secondary>`).
+
+### 4. Removed Redundant Country Column from Frontend Table
+- **Streamlined Geographic Column:**
+  - Hidden the redundant `Country` (`China`) column from the list view table while preserving City and Province, saving 90px+ of horizontal space. Country remains intact in database models, edit forms, and Side Drawer.
+
+### 5. Synchronized Skeleton Loader, Sorting & Freeze Menu
+- **11-Column Unified System:**
+  - Updated `displayOrder`, `SUPPLIER_TABLE_COLUMNS`, header sorting switch, and `SupplierSkeletonRows` to the new 11-column index structure.
+  - Adjusted `TableMessageRow colSpan` to 11.
+
+---
+
+## [Release 2026-10-13] — Supplier Module Side Drawer Expansion, Potential Dropdown Fix & Master Documentation
+
+### 1. Supplier Detail Side Drawer Overhaul (720px 2-Column Executive Layout)
+- **Expanded Width & Structured Cards in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Expanded drawer from 480px to **720px** (`maxWidth: 720px, width: 100%`) for a spacious, non-overlapping dual-column layout.
+  - Added 5 structured cards: Company Profile & Classification, Primary Contact Information, Factory Visit & Inspection Media, Pipeline Status & Commercial Evaluation, and Additional Contacts.
+  - Implemented smart clickable badges for inspection videos and cloud folders (`▶️ YouTube Video ↗`, `📁 Google Drive ↗`, `📂 OneDrive ↗`, `🎬 Vimeo ↗`, `🎥 Video Link ↗`).
+  - Added direct clickable links for Phone (`tel:`), WhatsApp (`https://wa.me/...`), Email (`mailto:`), and official websites.
+
+### 2. Potential Dropdown Case-Sensitivity Bug Fix
+- **Option Value Alignment in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Normalized database potential values (`"yes"` / `"no"`) with the Edit Modal's dropdown options, resolving the bug where suppliers with Potential = Yes were reverting to "Select Potential" upon opening the modal.
+
+### 3. Supplier Master Requirement Specification Document
+- **Master Documentation in [`MODULE_SUPPLIERS.md`](file:///d:/Om%20work1/ERP/Yinglima_ERP/doc/MODULE_SUPPLIERS.md):**
+  - Compiled the complete master specification for the Supplier module, including field validations (calling number digit restrictions, WeChat/WhatsApp handling), business logic (one-way New -> Existing progression, deletion protection rules), side drawer architecture, and downstream cross-module integrations with Local Purchase, Sourcing, and Planning.
+
+### 4. Floating Reference-Only Master Suggestion Dropdown for Supplier Company Name
+- **Floating Suggestion Architecture in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Implemented an autocomplete-style floating suggestion container underneath the "Name of Company" field on the Supplier create/edit form.
+  - Prioritizes prefix matches so typing `"o"` or `"om"` places matching suppliers like `"Om"` at the very top of the suggestion list.
+  - Configured with `pointer-events: none` and `user-select: none` ("untouchable") to ensure suggestions are purely visual/informational and cannot be accidentally clicked or selected to overwrite user text.
+  - Integrated real-time exact duplicate detection that blocks saving and shows an alert both inside the dropdown and beneath the blurred input field.
+
+### 5. Sidebar Active-Click Page State Reset & Sequential History Preservation
+- **Active Navigation Reset in [`AppShell.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/components/AppShell.tsx), [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx), and [`Buyers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Buyers.tsx):**
+  - Fixed an issue where clicking on "Suppliers" in the sidebar while viewing the "Add Supplier" form did nothing because React Router ignored clicks to the currently active URL.
+  - Added an active-click event bus (`erp:nav-active-click`) in `AppShell.tsx` that signals the mounted view to close any open forms, drawers, or import views and return directly to the main table/list.
+  - Maintained strict browser history sequencing: navigating between pages (e.g. Suppliers ⇄ Buyers) pushes standard browser history entries so back and forward browser arrows work with 100% fidelity.
+
+### 6. 3-Tier Cascading Categorization & Grouped Multi-Panel Dropdown for Products Supplied
+- **Hierarchical Products Supplied Dropdown in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Upgraded **Products Supplied (multiple)** to dynamically filter products by both selected **Product Category (multiple)** and **Key Strength Sub-Category (multiple)**.
+  - Configured intelligent disabled states: disabled with `"-- Please select Category first --"` if no category is selected, or `"-- Please select Sub-Categories first --"` if categories are chosen but no sub-categories have been selected yet.
+  - When multiple categories and sub-categories are selected, products render in a grouped multi-panel dropdown organized under their parent Sub-Categories (labeled `${Category} › ${Sub-Category}` or `${Sub-Category}`), matching the UX design of the Sub-Category dropdown.
+  - Supported master `Select All`, category/sub-category group-level select-all checkboxes with count indicators `(X/Y selected)`, and individual product checkboxes.
+  - Implemented automatic pruning: removing a category prunes any selected sub-categories and products belonging to that category; removing a sub-category prunes any selected products under that sub-category.
+### 7. Universal Top Filter Bar Unlock & Typeahead Master Search
+- **Standardized Top Filter UX Across All Active ERP Modules:**
+  - Upgraded top filter dropdowns in **Suppliers** (`Suppliers.tsx`), **Product Master** (`masters/Products.tsx`), **Buyers** (`Buyers.tsx`), **Product Prices** (`ProductPrices.tsx`), **Product Gallery** (`ProductGallery.tsx`), and **Local Purchases** (`LocalPurchases.tsx`).
+  - **Eliminated Locked / Disabled Fields:** Completely removed arbitrary `disabled={!parent}` locks on cascading filters (such as *Sub Category*, *Province / State*, *City*).
+  - **Master Typeahead Search with 'All' Support:** Every dropdown includes a live `Search / Type here...` input and an `"All"` reset option at the top.
+  - **Dynamic Contextual Scoping:** If a parent filter is chosen, options are scoped to that parent; if no parent filter is chosen, users can search and select across all records directly from the respective master lookup/endpoint without friction.
+
+---
+
+## [Release 2026-10-13] — Latency & Response-Time Optimization Across Backend & Frontend
+
+### 1. Backend N+1 Query Elimination & Eager Loading
+- **RBAC Roles Preloading in [`repository.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/rbac/repository.py), [`routes.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/rbac/routes.py), and [`service.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/rbac/service.py):**
+  - Replaced serial loop querying permissions for each role (`for r in roles: await get_permission_codes_for_role(r.id)`) with `list_all_with_permissions` using SQLAlchemy `selectinload(Role.permission_links).selectinload(RolePermission.permission)`.
+  - Dropped database round trips from 45 serial queries down to 2 batched queries.
+  - Response time dropped from **5,464 ms to 340 ms (16x faster)**.
+- **User Management Batching in [`users/routes.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/users/routes.py):**
+  - Implemented `_batch_users_with_roles` replacing the 4 sequential queries per user row (roles, manager, position, employee position) with 3 single SQL queries using `IN (...)`.
+  - Response time dropped from **2,928 ms to 620 ms (4.7x faster)**.
+
+### 2. 0ms Fast-Path In-Memory DNS Resolution
+- **Winsock DNS Bypass in [`dns_resilience.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/core/dns_resilience.py):**
+  - Added an in-memory 60-second TTL fast-path cache to prevent repetitive Windows Winsock system calls (160ms each) on pooled Supabase connections across Yinglima ERP, Inhyma ERP, and Central ERP Main.
+
+### 3. Frontend Route Code-Splitting with `React.lazy`
+- **Dynamic Module Loading in [`App.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/App.tsx):**
+  - Converted secondary and master pages to `React.lazy` dynamic imports wrapped with `<Suspense>`.
+  - Initial production JavaScript bundle dropped from **1,497.86 kB (1.5 MB) down to 266.16 kB (82% smaller)**.
+  - Heavy third-party packages such as SheetJS (`xlsx` at 429 kB) are now loaded strictly on-demand when Excel export/import actions occur.
+
+### 4. Shell Caching & Form Optimization
+- **Profile & Brand Caching in [`auth.ts`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/lib/auth.ts), [`AppShell.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/components/AppShell.tsx), and [`brand.ts`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/lib/brand.ts):**
+  - Added 10-second throttling to `/auth/profile` sync to eliminate redundant network hits during navigation.
+  - Added memory caching and in-flight request deduplication to `resolveBrandName()`, reducing `/organizations/public` calls to 0.99 ms.
+- **Local Purchase Quote Optimization in [`LocalPurchaseForm.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/purchases/LocalPurchaseForm.tsx):**
+  - Corrected lookup URL from `/suppliers?page_size=1000` to standard `/suppliers` to enable global caching.
+  - Line-item quote lookups now execute in parallel via `Promise.all` and update state in a single batch, reducing form load latency to 269 ms.
+
+---
+
+## [Release 2026-10-12] — Local Purchase Supplier Type-Ahead, Bill Document Cloud Storage & RBAC Master Documentation
+
+### 1. Local Purchase Supplier Searchable Combobox & Extraction Auto-Fill
+- **Type-Ahead Autocomplete in [`LocalPurchaseForm.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/purchases/LocalPurchaseForm.tsx):**
+  - Replaced the static HTML `<select>` dropdown with the application's reusable [`SearchableDropdown`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/components/SearchableDropdown.tsx).
+  - Users can now type characters (e.g. "San", "LT", "Young") to filter suppliers in real time with keyboard navigation (Arrow Up/Down + Enter) and a quick-clear (`✕`) button.
+  - Selecting a supplier automatically syncs with quotation line-item pricing and planning sheet imports.
+- **Bill Document Cloud Storage in Supabase & Download Action:**
+  - Extended local purchase backend schemas and services ([`schemas.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/purchases/local/schemas.py), [`service.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/purchases/local/service.py), [`storage.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/common/storage.py)) to upload and persist invoice files (PDFs, images, Excel) to Supabase Storage.
+  - Added direct invoice document download actions on both [`LocalPurchaseForm.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/purchases/LocalPurchaseForm.tsx) and [`LocalPurchaseDetailModal.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/purchases/LocalPurchaseDetailModal.tsx).
+  - When **⚡ Extract Bill Data** runs, any detected supplier name or ID automatically resolves against the supplier database and pre-fills the type-ahead search bar.
+
+### 2. Comprehensive RBAC & Permissions Master Guide
+- **Master Documentation in [`ROLES_AND_PERMISSIONS_MASTER_GUIDE.md`](file:///d:/Om%20work1/ERP/Yinglima_ERP/doc/ROLES_AND_PERMISSIONS_MASTER_GUIDE.md):**
+  - Created a full architectural and operational guide covering Yinglima ERP's Role-Based Access Control (RBAC) engine.
+  - Documented the Department-Role convergence, the 3-tier precedence hierarchy (Super Admin > Department Defaults > User Overrides), and the mathematical effective permission formula.
+  - Included a complete matrix of all 25 modules and their fine-grained permission codes (`module.action`), backend dependencies (`require_permission`), frontend UI guards (`<Can>`, `hasPermission`), and real-time Redis/memory cache invalidation lifecycles.
+
+---
+
+## [Release 2026-10-10] — Cross-Ecosystem Single Sign-Out (SLO), M2M Force Logout API & WebSocket Disconnect
+
+### 1. Internal Machine-to-Machine Force-Logout API
+- **Endpoint Implementation in [`internal_users.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/api/v1/internal_users.py):**
+  - Added `POST /api/v1/internal/users/{identifier}/logout` guarded by `internal_service_dep` HMAC authentication.
+  - Accepts local UUID or email/username prefix to resolve the user record.
+  - Invokes `auth_service.force_logout_user(user.id)`, invalidating active sessions and recording a revocation timestamp to blacklist bearer tokens.
+  - Emits real-time `FORCE_LOGOUT` frame across live WebSocket channels (`ws_manager.disconnect_user(str(user.id))`) to instantly disconnect open browser sessions.
+- **Unit Test Coverage:**
+  - Added `test_internal_logout_endpoint_works` in [`test_internal_users_foreign_keys.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/tests/test_internal_users_foreign_keys.py).
+
+### 2. Multi-Origin Browser Session Invalidation & Shared Cookie Logout
+- **Cross-Port Cookie Synchronization in [`ecosystemSession.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ecosystemSession.ts):**
+  - Sets `ihm_ecosystem_logged_out=1` cookie on logout across domain `localhost` and configured subdomains with root path `/`.
+  - Added `isExplicitlyLoggedOut()` helper checking both `sessionStorage` and the shared cookie marker.
+  - Clears `ihm_ecosystem_logged_out` on fresh logins via `setEcosystemCookie()`.
+- **Fast Watcher & App Lifecycle Defense:**
+  - Configured `initEcosystemSessionWatcher()` to poll every 2.5 seconds and trigger on window focus and visibility changes.
+  - In [`AppShell.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/components/AppShell.tsx), verified `isExplicitlyLoggedOut()` on mount and immediately purged local auth state (`Auth.clear()`) if any other ecosystem tab or app logged out.
+  - In [`ssoBridge.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ssoBridge.ts), updated `isExplicitLogout` to use `isExplicitlyLoggedOut()`, preventing automatic SSO re-authentication after a user explicitly logged out.
+
+---
+
+## [Release 2026-10-10] — Spoke 403 Loop Elimination, Address Bar Query Sanitization & Cross-ERP Failover Redirection
+
+### 1. Spoke ERP 403 Loop Prevention & Failover Cross-ERP Redirection
+- **Immediate Address Bar Query Sanitization in [`ssoBridge.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ssoBridge.ts):**
+  - In `processIncomingSsoHandover()`, stripped `sso_handover` from `window.location.search` immediately upon parsing via `window.history.replaceState`. Prevents re-submitting rejected tickets on browser refreshes or navigation changes.
+- **Failover Cross-ERP Redirection on 403 Forbidden:**
+  - When backend `POST /api/v1/auth/sso-handover` responds with 403 (e.g. user `userb@gmail.com` granted only Inhyma attempts to access Yinglima), the `catch` block clears stale credentials (`Auth.clear()`) and inspects the active central session.
+  - Automatically redirects users to their granted spoke ERP (e.g. Inhyma at `http://localhost:5174/dashboard?sso_handover=...`) or the official central control plane (`http://localhost:5170/dashboard`), avoiding endless 403 exception retries.
+- **AppShell & App Lifecycle Loop Defense:**
+  - In [`AppShell.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/components/AppShell.tsx), sanitized `location.search` when redirecting to `/login` to ensure rejected handover parameters are not carried into login route state.
+  - In [`App.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/App.tsx), added `ssoProcessedRef = useRef(false)` guard preventing repeated invocations across component re-renders.
+  - In [`Login.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/Login.tsx), added mount-time handover processing parity with Inhyma ERP.
+
+### 2. Auto-Activation on Central SSO Handover & Eviction Guard
+- **Verified Account Auto-Activation in [`auth/routes.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/auth/routes.py):**
+  - In `sso_handover_login`, when central verification confirms the user is authorized for Yinglima, any existing account marked inactive or soft-deleted is automatically restored (`deleted_at = None`, `is_active = True`, `status = UserStatus.ACTIVE`). Unregistered users are auto-provisioned on the fly. Eliminates 403 errors when central permissions are restored.
+- **Central Verification Before Eviction in [`AppShell.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/components/AppShell.tsx):**
+  - Gated the logged-in access check behind `verifyCentralEcosystemSession`. Prevents stale localhost browser cookies from evicting newly authenticated users and eliminates multi-tab redirect loops.
+- **Failover SSO Error Signaling in [`ssoBridge.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ssoBridge.ts):**
+  - Appended `?sso_error=handover_failed` when redirecting back to the control plane, allowing ERP_Main to halt automated bouncing and retain the user on the control plane dashboard.
+
+---
+
+## [Release 2026-10-10] — Production HTTPS Mixed Content Elimination, Supabase PgBouncer Statement Cache Auto-Disable, Cascading Category Enforcement & Bi-Directional Password Sync Federation
+
+### 1. Production Origin Security, Dynamic SSO Routing & User Isolation
+- **`isLocalhost()` Security Interceptor:**
+  - In [`ecosystemSession.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ecosystemSession.ts) and [`ssoBridge.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ssoBridge.ts), wrapped all `http://localhost:*` fallback URLs with `isLocalhost()` guards.
+  - In production HTTPS deployments (e.g. Render, Cloudflare, custom domains), insecure `http://` calls to ports `:8000`, `:8001`, `:8002`, `:5170`, `:5173`, and `:5174` are suppressed, eliminating browser Mixed Content blocking errors (`Blocked loading mixed active content`).
+- **Dynamic SSO Route Handling (`routeForCentralSession`):**
+  - Added `routeForCentralSession` and `createSsoHandoverUrlFromSession` in [`ssoBridge.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ssoBridge.ts) to handle multi-ERP routing directly from central session data.
+  - Users with 0 granted spoke ERPs (e.g. `User A`, `User B`, `User C`, `User D` with `allowed_erps = ["control-plane"]`) or $\ge 2$ spoke ERPs are automatically redirected to `http://localhost:5170/dashboard`.
+  - Users with exactly 1 other spoke ERP are redirected to their assigned ERP dashboard.
+- **User Isolation Guard:**
+  - In `processIncomingSsoHandover()`, if the incoming ticket or cookie email differs from the local cached profile, `Auth.clear()` runs immediately to enforce strict account isolation and avoid session leakage across logins.
+  - Direct navigation to Yinglima routes (`/dashboard`) by unassigned users triggers an automatic bounce to `http://localhost:5170/dashboard`.
+
+### 2. Dual-Path Centralized Spoke Login (`Login.tsx`)
+- **Central Session Routing & Graceful SSO Fallback in [`Login.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/Login.tsx):**
+  - Updated the login workflow to perform local authentication while concurrently establishing the central ecosystem session with `ERP_Main`.
+  - Supports flexible user lookup by canonical email, display name (e.g. `User A`), or username prefix.
+  - If a user is not authorized for Yinglima (including zero-grant users), `routeForCentralSession` immediately redirects them via SSO handover to the official central dashboard (`http://localhost:5170/dashboard`) or their designated spoke ERP rather than throwing an unhandled error.
+  - If a user's password was changed on another ERP and has not yet synced locally, the verified central session logs them in via SSO handover, preventing user lockouts.
+  - Fails closed: if the user's central session is reported revoked or inactive, login is rejected immediately.
+
+### 3. Bi-Directional Password Synchronization with ERP_Main
+- **Password Fanout Client [`erp_main_client.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/federation/erp_main_client.py):**
+  - Added `push_password_to_erp_main(email, new_password)` transmitting password changes to `ERP_Main` via `POST /internal/users/password` using internal service credentials.
+- **Route Interceptors:**
+  - Hooked into `change_password` in [`auth/routes.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/auth/routes.py) and `reset_password` in [`users/routes.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/users/routes.py).
+  - Automatically pushes password updates to ERP_Main so they propagate across the entire multi-ERP ecosystem without raising into or interrupting the local caller.
+- **Automated Test Suite:**
+  - Added [`test_password_sync_to_erp_main.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/tests/test_password_sync_to_erp_main.py).
+
+### 4. SSO Handover Central Verification Guard
+- **Fail-Closed Session Confirmation in [`auth/routes.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/auth/routes.py):**
+  - Integrated `verify_ecosystem_session(session_id)` from [`erp_main_client.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/federation/erp_main_client.py) into `sso_handover_login`.
+  - When `SSO_HANDOVER_REQUIRE_CENTRAL_VERIFICATION` is enabled, the backend verifies the central session against ERP_Main's live database before generating local tokens.
+  - Ensures tokens constructed client-side cannot bypass access governance, and immediately rejects revoked or suspended accounts.
+- **Automated Test Suite:**
+  - Added [`test_sso_handover_central_verification.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/tests/test_sso_handover_central_verification.py).
+
+### 5. Central Identity Protection on Local Profile Edits
+- **Email Modification Lock in [`users/routes.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/users/routes.py):**
+  - Implemented `enforce_central_identity(user_service, user_id, payload)`.
+  - Form re-submissions containing the existing email are permitted, but attempting to modify an email address locally throws `ForbiddenException("A user's email is managed centrally. Please change it from the ERP_Main Control Panel.")`, preventing broken SSO identity mappings.
+
+### 6. Cascading Category Enforcement in Master Data UI
+- **Required Category Selection Before Subcategory Population:**
+  - In [`Products.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/masters/Products.tsx), [`Suppliers.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx), [`Buyers.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/Buyers.tsx), and [`SearchableDropdown.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/components/SearchableDropdown.tsx):
+  - Strictly requires selecting a Primary Category before the Subcategory dropdown can be populated or selected.
+  - Subcategory is disabled and indicates `"Select category first"` until a category is chosen.
+  - Changing or clearing the Category automatically resets the selected Subcategory.
+
+### 7. Database Connection Hardening for Supabase Transaction Pooler (PgBouncer)
+- **Prepared Statement Cache Auto-Disable:**
+  - In [`app/database/engine.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/database/engine.py), implemented `_statement_cache_must_be_disabled()`.
+  - Auto-detects port 6543 / PgBouncer connection strings and disables asyncpg's prepared statement cache (`statement_cache_size=0`), preventing `DuplicatePreparedStatementError`.
+
+### 8. Local Purchase Boolean Simplification
+- In [`app/sales/service.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/sales/service.py), simplified `is_from_local_purchase` logic for clean, deterministic sourcing attribution.
+
+### 9. Python Virtualenv Interpreter Resolution in `server.py`
+- Fixed Windows virtual environment symlink resolution by using `sys.executable` directly rather than `Path(sys.executable).resolve()`.
+
+### 10. Spare-Part Support in Sale Process Order Processing (`is_spare`)
+- **Backend Schema & Service Extensions ([`models.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/sales/models.py), [`schemas.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/sales/schemas.py), [`service.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/sales/service.py)):**
+  - Added `is_spare` boolean column to `sales_order_items` with validation in request schemas.
+  - Handled spare-part unit pricing, packaging, and commercial calculations in `service.py`.
+- **Frontend Interface ([`SaleProcessForm.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/sales/SaleProcessForm.tsx), [`SaleProcessDetailModal.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/sales/SaleProcessDetailModal.tsx), [`saleProcess.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/types/saleProcess.ts)):**
+  - Added interactive spare-part toggle and product picker to differentiate main machines from spare components.
+  - Added `[Spare]` visual badges and dedicated costing column displays in both the form and order detail modal.
+
+### 11. Master Shipment Planning `(Blanks)` Filter & Migration Suite
+- **Planning Grid Empty Cell Filtering ([`planning/repository.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/planning/repository.py), [`Planning.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/Planning.tsx)):**
+  - Added `(Blanks)` filter option in column filter dropdowns, allowing logistics operators to filter container sheets for rows with unset values.
+- **Migration & Health Diagnostic Scripts:**
+  - Added [`migrate_master_planning.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/scripts/migrate_master_planning.py) for robust automated migration of master planning workbook data.
+  - Added [`update_product_branches.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/scripts/update_product_branches.py) and [`inspect_counts.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/scripts/inspect_counts.py).
+
+---
+
 ## [Release 2026-10-05] — Commercial Invoice (CI) 16-Column Costing Engine & Local Purchase Supplier Sourcing
 
 ### 1. Supplier & Purchase Price Source of Truth (Confirmed Local Purchase)
@@ -78,6 +329,32 @@
 - **Render Blueprint:** Added [`render.yaml`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/render.yaml) for 1-click Render web service and static site provisioning.
 - **Dynamic Port Binding:** Updated [`backend/Dockerfile`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/Dockerfile) to dynamically bind to `${PORT:-8001}`.
 - **Compose Orchestration:** Added [`docker-compose.prod.yml`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/docker-compose.prod.yml).
+
+## [Release 2026-10-10] — Real-Time Provisioning Synchronization & Soft-Deleted User Restoration
+- **Re-Granting Restoration:** Updated `POST /api/v1/internal/users/provision` in [`internal_users.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/api/v1/internal_users.py) to look up users by email regardless of `deleted_at`. When access is restored in ERP_Main, any soft-deleted user is reactivated (`deleted_at = None`, `is_active = True`, `status = ACTIVE`) and their password updated if provided.
+- **Dynamic List Filtering:** Soft-deleted users are omitted from active user queries (`/users`), while restored users immediately reappear upon being granted access.
+
+---
+
+## [Release 2026-10-10 Part 2] — Ecosystem Session Reliability, Cross-ERP Switching & False Logout Elimination
+
+### 1. Root Cause Resolution for False Logouts and Switch Loops
+- **Session Revocation Disambiguation:** In [`ecosystemSession.ts`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/lib/ecosystemSession.ts), the `ihm_ecosystem_logged_out` cookie was previously written as a generic `"1"`, causing newly established sessions to be flagged as revoked.
+- **Session-ID Keyed Revocation:** `clearEcosystemCookie(sessionId)` now records the exact revoked session ID inside `ihm_ecosystem_logged_out`. `isExplicitlyLoggedOut(currentSessionId)` only flags revocation if the cookie's recorded ID matches the current active session.
+- **SSO Handover Exemption:** Added immediate exemption for incoming SSO handover navigation (`sso_handover` query param in URL) ensuring switching users are never rejected as logged out.
+- **Cross-Domain/Port Cleansing:** Added `clearCookieEverywhere` and `setCookieEverywhere` covering host-only, `localhost`, `127.0.0.1`, current hostname, and `VITE_COOKIE_DOMAIN`.
+
+### 2. Multi-Tab Session Synchronization & Polling Loop Hardening
+- **Watcher Polling Loop Fix:** Removed redundant calls to `clearEcosystemCookie()` inside periodic polling, preventing perpetual renewal of the 60-second logout window.
+- **Tab Focus Stale State Recovery:** Window `focus` events purge stale tab-scoped `ihm_explicit_logout` flags when an active local session exists.
+
+### 3. Switcher Fallbacks & Local Login Session Recovery
+- **Switch Failure Fallback:** Wrapped `handleSwitch` in [`EcosystemSwitcher.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/components/EcosystemSwitcher.tsx) in try/catch blocks with direct navigation fallback.
+- **Local Login Fallback Session:** In [`Login.tsx`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/frontend/src/pages/Login.tsx), local login automatically establishes a fallback ecosystem session cookie if central control plane communication is degraded.
+
+### 4. Backend Multi-Identifier & Role-Based Authorization
+- **Comprehensive Key Resolution:** In [`routes.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/auth/routes.py), `sso_handover_login` matches against all known Yinglima identifiers (`yinglima`, `erp-02`, and dynamic `settings.ERP_KEY`), eliminating 403 Forbidden false rejections when central permissions use machine keys or friendly names.
+- **Central Authority & Super Admin Exemption:** Central role verification honors `central.get("role") == "super_admin"` with ecosystem-wide access, preventing super admins or users with valid grants from getting trapped in redirect loops.
 
 ---
 

@@ -22,7 +22,7 @@ import { SideDrawer, DetailFieldGrid } from "@/components/SideDrawer";
 import { ProductTradeHistoryDrawer } from "@/components/ProductTradeHistoryDrawer";
 import { StatusToggleSwitch } from "@/components/StatusToggleSwitch";
 import { ItemPopoverCell } from "@/components/ItemPopoverCell";
-import { SearchableDropdown, type DropdownOption } from "@/components/SearchableDropdown";
+import { SearchableDropdown, SearchableFilterDropdown, type DropdownOption } from "@/components/SearchableDropdown";
 import {
   MultiSelectField,
   SelectField,
@@ -488,10 +488,6 @@ export function ProductsPage() {
   }))[0];
 
 
-  const scopedFilterSubCategories = categoryFilter
-    ? subCategories.items.filter((sc) => sc.category_id === categoryFilter)
-    : subCategories.items;
-
   const extraFilters: Record<string, string> = {};
   if (categoryFilter) extraFilters.category_id = categoryFilter;
   if (subCategoryFilter) extraFilters.sub_category_id = subCategoryFilter;
@@ -535,6 +531,17 @@ export function ProductsPage() {
   }, [setSearchParams]);
 
   useModalHistorySync(Boolean(drawerProduct), handleCloseDrawer);
+
+  useEffect(() => {
+    const handleNavActiveClick = (e: Event) => {
+      const customEvent = e as CustomEvent<{ key?: string; path?: string }>;
+      if (customEvent.detail?.key === "masters-products") {
+        handleCloseDrawer();
+      }
+    };
+    window.addEventListener("erp:nav-active-click", handleNavActiveClick);
+    return () => window.removeEventListener("erp:nav-active-click", handleNavActiveClick);
+  }, [handleCloseDrawer]);
 
   // Universal search deep-link: `?id=` opens that product's detail drawer
   // directly, so clicking a Products result in the topbar search lands on
@@ -583,8 +590,6 @@ export function ProductsPage() {
       entityName="product"
       clientSideSearch={false}
       heading="Products Master"
-      subtitle="Manage items, packaging weights, CBM, refund VAT, and license warnings."
-      breadcrumbTrail={["Master Data", "Products"]}
       newButtonLabel="+ New Product"
       searchPlaceholder="Search code, name, barcode, or Sr. No..."
       reloadToken={String(liveReloadToken)}
@@ -596,85 +601,68 @@ export function ProductsPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "20px", width: "100%" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>Category</label>
-            <select
-              value={categoryFilter}
-              onChange={(e) => {
-                setCategoryFilter(e.target.value);
-                setSubCategoryFilter("");
+            <SearchableFilterDropdown
+              value={categoryFilter || null}
+              onChange={(val) => {
+                setCategoryFilter(val || "");
+                if (!val) setSubCategoryFilter("");
               }}
-              style={{
-                padding: "9px 12px",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e0",
-                fontSize: "13.5px",
-                background: "#ffffff",
-                color: "#1e293b",
-                width: "100%",
+              placeholder="All"
+              allLabel="All"
+              fetchOptions={async (term) => {
+                const q = term.toLowerCase().trim();
+                return categories.items
+                  .filter((c) => !q || c.name.toLowerCase().includes(q))
+                  .map((c) => ({ value: c.id, label: c.name }));
               }}
-            >
-              <option value="">All</option>
-              {categories.items.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              fetchLabelForValue={async (val) => {
+                const c = categories.items.find((item) => item.id === val);
+                return c ? c.name : "";
+              }}
+            />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-            <label style={{ fontSize: "13px", fontWeight: 600, color: categoryFilter ? "#334155" : "#94a3b8" }}>Sub Category</label>
-            <select
-              value={subCategoryFilter}
-              disabled={!categoryFilter}
-              onChange={(e) => setSubCategoryFilter(e.target.value)}
-              style={{
-                padding: "9px 12px",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e0",
-                fontSize: "13.5px",
-                background: categoryFilter ? "#ffffff" : "#f1f5f9",
-                color: categoryFilter ? "#1e293b" : "#94a3b8",
-                cursor: categoryFilter ? "pointer" : "not-allowed",
-                width: "100%",
+            <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>Sub Category</label>
+            <SearchableFilterDropdown
+              value={subCategoryFilter || null}
+              onChange={(val) => setSubCategoryFilter(val || "")}
+              placeholder="All"
+              allLabel="All"
+              fetchOptions={async (term) => {
+                const q = term.toLowerCase().trim();
+                const pool = categoryFilter
+                  ? subCategories.items.filter((sc) => sc.category_id === categoryFilter)
+                  : subCategories.items;
+                return pool
+                  .filter((sc) => !q || sc.name.toLowerCase().includes(q) || (sc.code && sc.code.toLowerCase().includes(q)))
+                  .map((sc) => ({ value: sc.id, label: sc.name }));
               }}
-            >
-              {categoryFilter ? (
-                <>
-                  <option value="">All</option>
-                  {scopedFilterSubCategories.map((sc) => (
-                    <option key={sc.id} value={sc.id}>
-                      {sc.name}
-                    </option>
-                  ))}
-                </>
-              ) : (
-                <option value="">Select Category first</option>
-              )}
-            </select>
+              fetchLabelForValue={async (val) => {
+                const sc = subCategories.items.find((item) => item.id === val);
+                return sc ? sc.name : "";
+              }}
+            />
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
             <label style={{ fontSize: "13px", fontWeight: 600, color: "#334155" }}>Brand</label>
-            <select
-              value={brandFilter}
-              onChange={(e) => setBrandFilter(e.target.value)}
-              style={{
-                padding: "9px 12px",
-                borderRadius: "6px",
-                border: "1px solid #cbd5e0",
-                fontSize: "13.5px",
-                background: "#ffffff",
-                color: "#1e293b",
-                width: "100%",
+            <SearchableFilterDropdown
+              value={brandFilter || null}
+              onChange={(val) => setBrandFilter(val || "")}
+              placeholder="All"
+              allLabel="All"
+              fetchOptions={async (term) => {
+                const q = term.toLowerCase().trim();
+                return brands.items
+                  .filter((b) => !q || b.name.toLowerCase().includes(q))
+                  .map((b) => ({ value: b.id, label: b.name }));
               }}
-            >
-              <option value="">All</option>
-              {brands.items.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
+              fetchLabelForValue={async (val) => {
+                const b = brands.items.find((item) => item.id === val);
+                return b ? b.name : "";
+              }}
+            />
           </div>
         </div>
       }

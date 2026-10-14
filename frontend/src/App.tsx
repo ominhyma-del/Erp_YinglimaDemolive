@@ -14,14 +14,15 @@
  * /dashboard. It is now imported and routed below.
  */
 
-import { useEffect } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { setUnauthorizedHandler } from "@/lib/api";
 import { LEGACY_REDIRECTS } from "@/lib/nav";
 
+// Synchronous direct imports for 0ms instant route switching with zero white-flash
 import { LoginPage } from "@/pages/Login";
-import { AuthCallbackPage } from "@/pages/AuthCallback";
 import { DashboardPage } from "@/pages/Dashboard";
+import { AuthCallbackPage } from "@/pages/AuthCallback";
 import { ForbiddenPage } from "@/pages/Forbidden";
 import { OrganizationPage } from "@/pages/Organization";
 import { AuditPage } from "@/pages/Audit";
@@ -49,19 +50,20 @@ import { CategoriesPage } from "@/pages/masters/Categories";
 import { SubCategoriesPage } from "@/pages/masters/SubCategories";
 import { ProductsPage } from "@/pages/masters/Products";
 import { ProductPricesPage } from "@/pages/ProductPrices";
-import { NetworkStatusNotifier } from "@/components/NetworkStatusNotifier";
-import { LiveConnectionIndicator } from "@/components/LiveConnectionIndicator";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { LiveConnectionLifecycle } from "@/lib/live/liveConnectionLifecycle";
 import { ProductGalleryPage } from "@/pages/ProductGallery";
 import { LocalPurchasesPage } from "@/pages/purchases/LocalPurchases";
 import { LocalPurchaseFormPage } from "@/pages/purchases/LocalPurchaseForm";
 import { SaleProcessListPage } from "@/pages/sales/SaleProcessList";
 import { SaleProcessFormPage } from "@/pages/sales/SaleProcessForm";
-import { initGlobalPasteSanitizer } from "@/lib/pasteSanitizer";
-import { initGlobalAutocompleteBlocker } from "@/lib/autocompleteBlocker";
 import { TrashPage } from "@/pages/Trash";
 import PublicSupplierQuotePage from "@/pages/PublicSupplierQuotePage";
+
+import { NetworkStatusNotifier } from "@/components/NetworkStatusNotifier";
+import { LiveConnectionIndicator } from "@/components/LiveConnectionIndicator";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { LiveConnectionLifecycle } from "@/lib/live/liveConnectionLifecycle";
+import { initGlobalPasteSanitizer } from "@/lib/pasteSanitizer";
+import { initGlobalAutocompleteBlocker } from "@/lib/autocompleteBlocker";
 import { processIncomingSsoHandover } from "@/lib/ssoBridge";
 
 export function App() {
@@ -83,7 +85,10 @@ export function App() {
   // genuine fresh auto-login ("logged-in") should redirect to /dashboard;
   // "already-logged-in" means nothing changed, so the user's current page
   // (wherever they navigated to) is left alone.
+  const ssoProcessedRef = useRef(false);
   useEffect(() => {
+    if (ssoProcessedRef.current) return;
+    ssoProcessedRef.current = true;
     processIncomingSsoHandover().then((result) => {
       if (result === "logged-in") {
         navigate("/dashboard", { replace: true });
@@ -114,64 +119,66 @@ export function App() {
         page's crashed state.
       */}
       <ErrorBoundary key={location.pathname} title="This page ran into a problem.">
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/auth/callback" element={<AuthCallbackPage />} />
-          <Route path="/quote/:token" element={<PublicSupplierQuotePage />} />
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/403" element={<ForbiddenPage />} />
-          <Route path="/organization" element={<OrganizationPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/trash" element={<TrashPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/rbac" element={<RbacPage />} />
-          <Route path="/effective-permissions" element={<EffectivePermissionsPage />} />
-          {/* Employee was merged into User -- /employees is now an alias for the same page. */}
-          <Route path="/employees" element={<UsersPage />} />
-          <Route path="/positions" element={<PositionsPage />} />
-          <Route path="/suppliers" element={<SuppliersPage />} />
-          <Route path="/buyers" element={<BuyersPage />} />
-          <Route path="/inquiries" element={<InquiriesPage />} />
-          <Route path="/planning" element={<PlanningPage />} />
+        <Suspense fallback={null}>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route path="/quote/:token" element={<PublicSupplierQuotePage />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/403" element={<ForbiddenPage />} />
+            <Route path="/organization" element={<OrganizationPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+            <Route path="/trash" element={<TrashPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/rbac" element={<RbacPage />} />
+            <Route path="/effective-permissions" element={<EffectivePermissionsPage />} />
+            {/* Employee was merged into User -- /employees is now an alias for the same page. */}
+            <Route path="/employees" element={<UsersPage />} />
+            <Route path="/positions" element={<PositionsPage />} />
+            <Route path="/suppliers" element={<SuppliersPage />} />
+            <Route path="/buyers" element={<BuyersPage />} />
+            <Route path="/inquiries" element={<InquiriesPage />} />
+            <Route path="/planning" element={<PlanningPage />} />
 
-          {/* Purchases */}
-          <Route path="/purchase/local" element={<LocalPurchasesPage />} />
-          <Route path="/purchase/local/new" element={<LocalPurchaseFormPage />} />
-          <Route path="/purchase/local/:id/edit" element={<LocalPurchaseFormPage />} />
-          <Route path="/local-purchase" element={<Navigate to="/purchase/local" replace />} />
+            {/* Purchases */}
+            <Route path="/purchase/local" element={<LocalPurchasesPage />} />
+            <Route path="/purchase/local/new" element={<LocalPurchaseFormPage />} />
+            <Route path="/purchase/local/:id/edit" element={<LocalPurchaseFormPage />} />
+            <Route path="/local-purchase" element={<Navigate to="/purchase/local" replace />} />
 
-          {/* Sales */}
-          <Route path="/sale/process" element={<SaleProcessListPage />} />
-          <Route path="/sale/process/new" element={<SaleProcessFormPage />} />
-          <Route path="/sale/process/:id/edit" element={<SaleProcessFormPage />} />
+            {/* Sales */}
+            <Route path="/sale/process" element={<SaleProcessListPage />} />
+            <Route path="/sale/process/new" element={<SaleProcessFormPage />} />
+            <Route path="/sale/process/:id/edit" element={<SaleProcessFormPage />} />
 
-          <Route path="/masters/company-list" element={<CompanyListPage />} />
-          <Route path="/masters/countries" element={<CountriesPage />} />
-          <Route path="/masters/states" element={<StatesPage />} />
-          <Route path="/masters/cities" element={<CitiesPage />} />
-          <Route path="/masters/currencies" element={<CurrenciesPage />} />
-          <Route path="/masters/uom" element={<UomPage />} />
-          <Route path="/masters/hsn" element={<HsnPage />} />
-          <Route path="/masters/brands" element={<BrandsPage />} />
-          <Route path="/masters/supplier-types" element={<SupplierTypesPage />} />
-          <Route path="/masters/buyer-types" element={<BuyerTypesPage />} />
-          <Route path="/masters/categories" element={<CategoriesPage />} />
-          <Route path="/masters/subcategories" element={<SubCategoriesPage />} />
-          <Route path="/masters/products" element={<ProductsPage />} />
-          <Route path="/inventory/product-prices" element={<ProductPricesPage />} />
-          <Route path="/product-prices" element={<Navigate to="/inventory/product-prices" replace />} />
-          <Route path="/masters/product-prices" element={<Navigate to="/inventory/product-prices" replace />} />
-          <Route path="/product-gallery" element={<ProductGalleryPage />} />
-          <Route path="/product_gallery" element={<Navigate to="/product-gallery" replace />} />
+            <Route path="/masters/company-list" element={<CompanyListPage />} />
+            <Route path="/masters/countries" element={<CountriesPage />} />
+            <Route path="/masters/states" element={<StatesPage />} />
+            <Route path="/masters/cities" element={<CitiesPage />} />
+            <Route path="/masters/currencies" element={<CurrenciesPage />} />
+            <Route path="/masters/uom" element={<UomPage />} />
+            <Route path="/masters/hsn" element={<HsnPage />} />
+            <Route path="/masters/brands" element={<BrandsPage />} />
+            <Route path="/masters/supplier-types" element={<SupplierTypesPage />} />
+            <Route path="/masters/buyer-types" element={<BuyerTypesPage />} />
+            <Route path="/masters/categories" element={<CategoriesPage />} />
+            <Route path="/masters/subcategories" element={<SubCategoriesPage />} />
+            <Route path="/masters/products" element={<ProductsPage />} />
+            <Route path="/inventory/product-prices" element={<ProductPricesPage />} />
+            <Route path="/product-prices" element={<Navigate to="/inventory/product-prices" replace />} />
+            <Route path="/masters/product-prices" element={<Navigate to="/inventory/product-prices" replace />} />
+            <Route path="/product-gallery" element={<ProductGalleryPage />} />
+            <Route path="/product_gallery" element={<Navigate to="/product-gallery" replace />} />
 
-          {Object.entries(LEGACY_REDIRECTS).map(([from, to]) => (
-            <Route key={from} path={from} element={<Navigate to={to} replace />} />
-          ))}
+            {Object.entries(LEGACY_REDIRECTS).map(([from, to]) => (
+              <Route key={from} path={from} element={<Navigate to={to} replace />} />
+            ))}
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </Suspense>
       </ErrorBoundary>
     </>
   );
