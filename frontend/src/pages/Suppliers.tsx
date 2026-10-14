@@ -90,6 +90,7 @@ const SUPPLIER_IMPORT_HEADERS: ImportHeader[] = [
   { key: "Country", label: "Country", required: true },
   { key: "State / Province", label: "State / Province", required: true },
   { key: "City", label: "City", required: true },
+  { key: "Address", label: "Address" },
   { key: "Brand Description", label: "Brand Description" },
   { key: "Supplier Type", label: "Supplier Type" },
   { key: "Current Status", label: "Current Status" },
@@ -101,10 +102,13 @@ const SUPPLIER_IMPORT_HEADERS: ImportHeader[] = [
   { key: "Calling Number", label: "Calling Number" },
   { key: "WhatsApp Number", label: "WhatsApp Number" },
   { key: "WeChat Number", label: "WeChat Number" },
+  { key: "Contact Person 2", label: "Contact Person 2" },
+  { key: "Designation 2", label: "Designation 2" },
+  { key: "Calling Number 2", label: "Calling Number 2" },
+  { key: "WhatsApp Number 2", label: "WhatsApp Number 2" },
+  { key: "WeChat Number 2", label: "WeChat Number 2" },
   { key: "Emails", label: "Emails" },
   { key: "Tax ID / GST Number", label: "Tax ID / GST Number" },
-  { key: "Address", label: "Address" },
-  { key: "Town", label: "Town" },
   { key: "Primary Website", label: "Primary Website" },
   { key: "Secondary Website", label: "Secondary Website" },
   { key: "Visited Factory/Office", label: "Visited Factory/Office" },
@@ -143,7 +147,6 @@ const EMPTY_SUPPLIER_FORM = {
   emails: [] as string[],
   tax_id_number: "",
   address: "",
-  town: "",
   primary_website: "",
   secondary_website: "",
   supplier_grade: "",
@@ -1619,7 +1622,6 @@ export function SuppliersPage() {
         emails: supplier.emails || [],
         tax_id_number: supplier.tax_id_number || "",
         address: supplier.address || "",
-        town: supplier.town || "",
         primary_website: supplier.primary_website || "",
         secondary_website: supplier.secondary_website || "",
         supplier_grade: supplier.supplier_grade || "",
@@ -1716,7 +1718,6 @@ export function SuppliersPage() {
       emails,
       tax_id_number: form.tax_id_number.trim() || null,
       address: form.address.trim() || null,
-      town: form.town.trim() || null,
       primary_website: form.primary_website.trim() || null,
       secondary_website: form.secondary_website.trim() || null,
       sub_category_ids: formSubCategoryIds,
@@ -3062,22 +3063,12 @@ export function SuppliersPage() {
                         id="field-province"
                         hasError={Boolean(validationErrors["field-province"])}
                         value={formStateId}
-                        onChange={(v, label) => {
+                        onChange={(v) => {
                           setFormStateId(v);
-                          setFormStateCustomText(v ? label : "");
                           setFormCityId(null);
-                          setFormCityCustomText("");
                           setValidationErrors((prev) => ({ ...prev, "field-province": "", "field-city": "" }));
                         }}
-                        allowCustomText={true}
-                        onTextChange={(text) => {
-                          setFormStateCustomText(text);
-                          setFormStateId(null);
-                          setFormCityId(null);
-                          setFormCityCustomText("");
-                          setValidationErrors((prev) => ({ ...prev, "field-province": "", "field-city": "" }));
-                        }}
-                        placeholder="Search or type province..."
+                        placeholder="Search province from Master..."
                         fetchOptions={searchFetcher("/masters/states", (): Record<string, string> =>
                           formCountryId ? { country_id: formCountryId } : {}
                         )}
@@ -3119,6 +3110,16 @@ export function SuppliersPage() {
                           <span>⚠️</span> {validationErrors["field-city"]}
                         </div>
                       )}
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <TextField
+                        id="address"
+                        label="Address"
+                        maxLength={500}
+                        placeholder="Street address, building, floor, room..."
+                        value={form.address}
+                        onChange={(v) => setField("address", v)}
+                      />
                     </div>
                   </div>
 
@@ -3295,8 +3296,6 @@ export function SuppliersPage() {
                     </h3>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "18px", marginBottom: "18px" }}>
                       <TextField id="tax_id_number" label="Tax ID Number" maxLength={100} value={form.tax_id_number} onChange={(v) => setField("tax_id_number", v)} />
-                      <TextField id="address" label="Address" maxLength={500} value={form.address} onChange={(v) => setField("address", v)} />
-                      <TextField id="town" label="Town" maxLength={150} value={form.town} onChange={(v) => setField("town", v)} />
                       <WebsiteField id="primary_website" label="Primary Website" placeholder="https://..." value={form.primary_website} onChange={(v) => setField("primary_website", v)} />
                       <WebsiteField id="secondary_website" label="Secondary Website" placeholder="https://..." value={form.secondary_website} onChange={(v) => setField("secondary_website", v)} />
                       <SelectField id="supplier_grade" label="Supplier Grade" value={form.supplier_grade} onChange={(v) => setField("supplier_grade", v)}>
@@ -4235,7 +4234,7 @@ export function SuppliersPage() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "14px" }}>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product Category</label>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Category</label>
                   <SearchableFilterDropdown
                     value={categoryFilter}
                     onChange={(v) => {
@@ -4252,7 +4251,7 @@ export function SuppliersPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Key Strength Sub Category</label>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product Sub Category</label>
                   <SearchableFilterDropdown
                     value={subCategoryFilter}
                     onChange={(v) => {
@@ -4272,7 +4271,7 @@ export function SuppliersPage() {
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product Supplied</label>
+                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px", display: "block" }}>Product</label>
                   <SearchableFilterDropdown
                     value={productFilter}
                     onChange={(v) => {
@@ -5139,7 +5138,6 @@ export function SuppliersPage() {
                     { label: "Supplier Type", value: drawerSupplier.supplier_type ? drawerSupplier.supplier_type.toUpperCase() : "—" },
                     { label: "Brand Description", value: drawerSupplier.brand_description || "—" },
                     { label: "Tax ID / GST Number", value: drawerSupplier.tax_id_number || "—" },
-                    { label: "Town", value: drawerSupplier.town || "—" },
                     { label: "Country", value: resolver.get("countries", drawerSupplier.country_id) || "—" },
                     { label: "Province / State", value: resolver.get("states", drawerSupplier.state_id) || "—" },
                     { label: "City", value: resolver.get("cities", drawerSupplier.city_id) || "—" },

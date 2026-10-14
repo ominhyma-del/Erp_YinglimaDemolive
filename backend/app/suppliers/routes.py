@@ -136,7 +136,6 @@ async def _to_supplier_read(service: SupplierService, supplier) -> dict:
         "contact_wechat_number": supplier.contact_wechat_number,
         "tax_id_number": supplier.tax_id_number,
         "address": supplier.address,
-        "town": supplier.town,
         "primary_website": supplier.primary_website,
         "secondary_website": supplier.secondary_website,
         "supplier_grade": supplier.supplier_grade,

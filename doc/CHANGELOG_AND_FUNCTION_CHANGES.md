@@ -3,7 +3,30 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
-## [Release 2026-10-14] — Supplier Table Optimization: Column Consolidation (15 to 11 Columns) & Horizontal Scroll Elimination
+## [Release 2026-10-14] — Supplier Dual Contacts, Town Removal, Address Relocation & Master Validation
+
+### 1. Dual Contacts in Supplier Import / Export & Multi-Number Support
+- **Dual Contacts Pipeline in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx), [`service.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/suppliers/service.py), and [`constants.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/suppliers/constants.py):**
+  - Extended import and export templates to support secondary contacts: `Contact Person 2`, `Designation 2`, `Calling Number 2`, `WhatsApp Number 2`, and `WeChat Number 2`.
+  - Added support for comma/slash-separated multiple phone numbers with normalization.
+  - Applied migration [`41a972a6d3d4_widen_supplier_phone_columns.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/alembic/versions/41a972a6d3d4_widen_supplier_phone_columns.py) to widen phone columns to `VARCHAR(150)`.
+
+### 2. Complete Removal of `Town` Column across Entire Stack
+- **Database & Codebase Purge in [`models.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/app/suppliers/models.py) and [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Generated and applied Alembic migration [`86ea2b62aa9c_drop_town_from_suppliers.py`](file:///d:/Om%20work1/ERP/Yinglima_ERP/backend/alembic/versions/86ea2b62aa9c_drop_town_from_suppliers.py).
+  - Dropped `town` from `Supplier` model, Pydantic schemas (`SupplierCreate`, `SupplierUpdate`, `SupplierRead`), routes, repositories, search service, import/export headers, and frontend drawer/form bindings.
+
+### 3. Form Layout Rebalancing & Address Relocation to Tab 1
+- **Full-Width Address under Geography:**
+  - Relocated `Address` field to **Tab 1 (General Information)** immediately beneath Country, Province, and City, spanning all 3 columns (`gridColumn: "1 / -1"`).
+  - Removed `Address` and `Town` from Tab 2, rebalancing the remaining 6 profile fields into a symmetrical **2-row × 3-column** grid without empty cells.
+
+### 4. Strict Province Master Validation
+- **Master Integrity in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Removed `allowCustomText={true}` and `onTextChange` from `field-province`.
+  - Eliminated `Use "..." (New) ↵ Enter` prompt; users can strictly select valid states from the Province Master (`/masters/states`), matching Country and City behavior.
+
+### 5. Table Column Optimization: Column Consolidation (15 to 11 Columns) & Horizontal Scroll Elimination
 
 ### 1. Merged Company Name & Brand Column
 - **2-Line Clamping & Informational Pill Tag in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
@@ -29,6 +52,17 @@
 - **11-Column Unified System:**
   - Updated `displayOrder`, `SUPPLIER_TABLE_COLUMNS`, header sorting switch, and `SupplierSkeletonRows` to the new 11-column index structure.
   - Adjusted `TableMessageRow colSpan` to 11.
+
+### 6. Master Quality Assurance (QA) & Verification Audit Checklist Added
+- **Comprehensive Audit Specification in [`MODULE_SUPPLIERS.md`](file:///d:/Om%20work1/ERP/Yinglima_ERP/doc/MODULE_SUPPLIERS.md):**
+  - Added dedicated Section 7 covering: Form dropdown integrity & cascading rules, Saving & two-way sync across table inline and inside form modal, Blue Company Name link triggering the 720px Side Drawer (Complete View) with 5 structured cards, 11-column layout verification, Top filter views with unlocked master search and 'All' reset, Dual contacts in import/export, and Loading time benchmarks (<300ms API, 0ms cached dropdowns).
+
+### 7. Simplified Top Filter Dropdown Labels
+- **Filter Labels Refined in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx):**
+  - Renamed `Product Category` ➔ **`Category`**.
+  - Renamed `Key Strength Sub Category` ➔ **`Product Sub Category`**.
+  - Renamed `Product Supplied` ➔ **`Product`**.
+  - Preserved all underlying cascading queries, debouncing, master lookups, and `"All"` reset behavior.
 
 ---
 

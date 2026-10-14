@@ -504,7 +504,6 @@ export interface Supplier {
   emails?: string[];
   tax_id_number?: string | null;
   address?: string | null;
-  town?: string | null;
   primary_website?: string | null;
   secondary_website?: string | null;
   supplier_grade?: string | null;

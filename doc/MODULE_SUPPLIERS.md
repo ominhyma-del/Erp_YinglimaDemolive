@@ -32,10 +32,9 @@ The Supplier master profile consists of five distinct logical sections:
 | **Brand Description** | Text | Optional | Proprietary brands manufactured or marketed by the supplier. |
 | **Tax ID / GST Number** | Text | Optional | Unified Social Credit Code (China) or foreign tax registration number. |
 | **Country\*** | Select | Default: **China**, Editable | Country of registration/factory origin. |
-| **Province / State\*** | Select | Dependent dropdown | State or province (e.g. Guangdong, Zhejiang, Jiangsu). |
-| **City\*** | Select | Dependent dropdown | City of manufacturing facility or sales office (e.g. Foshan, Ningbo, Wenzhou). |
-| **Town** | Text | Optional | Sub-district, industrial park, or town level location. |
-| **Address** | Textarea | Optional | Complete street/building address of factory or office. |
+| **Province / State\*** | Select | Dependent master dropdown (Strict Master Only, Custom Text Disabled) | State or province (e.g. Guangdong, Zhejiang, Jiangsu) strictly selected from Province Master. |
+| **City\*** | Select | Dependent master dropdown | City of manufacturing facility or sales office (e.g. Foshan, Ningbo, Wenzhou) from City Master. |
+| **Address** | Text | Positioned in Tab 1 (Geography) spanning full-width (3 columns) | Complete street/building address of factory or office. |
 
 #### 2.1.1 Floating Master Suggestion Dropdown (Untouchable / Non-Selectable)
 When typing into the **Name of Company** field in the Supplier Creation & Edit form:
@@ -134,16 +133,17 @@ A supplier can have multiple secondary contacts. Each contact record stores:
 
 ### 3.1 Top Filter Bar
 The top filter section enables multi-criteria filtering across the supplier directory:
-1. **Product Category** (Multi-select)
-2. **Key Strength Product Sub-Category** (Multi-select)
-3. **Country** (Dropdown)
-4. **Province / State** (Cascaded Dropdown)
-5. **City** (Cascaded Dropdown)
-6. **Supplier Type** (`Manufacturer` / `Trader` / `All`)
-7. **Supplier Grade** (`Grade A` / `Grade B` / `Grade C` / `All`)
-8. **Current Status** (`Existing` / `New` / `All`)
-9. **Potential** (`Yes` / `No` / `All`)
-10. **Visited Factory / Office?** (`Yes` / `No` / `All`)
+1. **Category** (Searchable Master Dropdown)
+2. **Product Sub Category** (Cascaded / Unlocked Master Dropdown)
+3. **Product** (Cascaded / Unlocked Master Dropdown)
+4. **Country** (Dropdown)
+5. **Province / State** (Cascaded Dropdown)
+6. **City** (Cascaded Dropdown)
+7. **Supplier Type** (`Manufacturer` / `Trader` / `All`)
+8. **Supplier Grade** (`Grade A` / `Grade B` / `Grade C` / `All`)
+9. **Current Status** (`Existing` / `New` / `All`)
+10. **Potential** (`Yes` / `No` / `All`)
+11. **Visited Factory / Office?** (`Yes` / `No` / `All`)
 
 ### 3.2 List Table Columns & In-Line Actions
 * **Checkbox:** Selection for bulk actions and exports.
@@ -220,7 +220,7 @@ When any supplier company name is clicked in the table, the **Side Drawer** slid
   * Subtitle: `Supplier Type: <Type> | Status: <Active/Inactive>`
   * Primary Action: `✏️ Edit Supplier` button (opens the edit modal directly from the drawer).
 * **Card 1: 🏢 Company Profile & Classification:**
-  * Company Name, Supplier Type, Brand Description, Tax ID / GST Number, Town, Country, State, City, Full Address.
+  * Company Name, Supplier Type, Brand Description, Tax ID / GST Number, Country, State, City, Full Address.
   * Category chips, Sub-Category chips, Products Supplied chips, Secondary Products description.
 * **Card 2: 👤 Primary Contact Information:**
   * Contact Person, Designation.
@@ -284,6 +284,20 @@ When any supplier company name is clicked in the table, the **Side Drawer** slid
 
 ## 6. Maintenance & Change History
 
+* **2026-10-14 (Strict Province Master Selection Enforcement):**
+  * **Removed Custom Text & Enter Prompt:** Removed `allowCustomText={true}` and `onTextChange` from `field-province` in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx).
+  * **Master Integrity:** Province dropdown now strictly queries and validates against the Province Master (`/masters/states`). Eliminated `Use "..." (New) ↵ Enter` custom prompt. Non-master text typed by users is not added on Enter and is discarded on blur, matching Country and City behavior.
+* **2026-10-14 (Form Layout Rebalancing & Address Relocation to Tab 1):**
+  * **Address Relocated to Tab 1:** Moved `Address` into **Tab 1 (General Information & Geography)**, positioned immediately under Country, Province, and City, spanning the full width across 3 columns (`gridColumn: "1 / -1"`).
+  * **Tab 2 Balanced into 2×3 Grid:** Removed `Address` and `Town` from Tab 2, arranging the remaining 6 profile fields into a balanced 2-row × 3-column layout (Row 1: *Tax ID Number, Primary Website, Secondary Website*; Row 2: *Supplier Grade, Current Status, Potential*), completely eliminating gaps.
+* **2026-10-14 (Complete Removal of `Town` Column & DB Migration 86ea2b62aa9c):**
+  * **Database Migration:** Applied Alembic migration `86ea2b62aa9c_drop_town_from_suppliers.py` to permanently drop `town` column from `suppliers` table.
+  * **Backend Elimination:** Removed `town` from `Supplier` ORM model, Pydantic schemas (`SupplierCreate`, `SupplierUpdate`, `SupplierRead`), constants (`IMPORT_HEADERS`, `EXPORT_HEADERS`), `validators.py`, `service.py`, `routes.py`, `repository.py`, and `search/service.py`.
+  * **Frontend Elimination:** Removed `town` from `Suppliers.tsx` (headers, empty form, edit pre-population, save payload, and drawer summary card), `sampleTemplate.ts`, and `ImportWizard.tsx`.
+* **2026-10-14 (Dual Contacts in Import/Export, Column Widening & Multi-Number Support):**
+  * **Dual Contacts Support:** Extended Excel/CSV sample export and import wizard to support 2 contacts: `Contact Person 2`, `Designation 2`, `Calling Number 2`, `WhatsApp Number 2`, `WeChat Number 2`.
+  * **Multi-Number Support:** Validates and normalizes multiple phone numbers separated by commas/slashes (e.g., `+86 13800000001, +86 13800000002`).
+  * **Schema Widening:** Applied migration `41a972a6d3d4_widen_supplier_phone_columns.py` widening `contact_calling_number`, `contact_whatsapp_number`, and `contact_wechat_number` to `VARCHAR(150)`.
 * **2026-10-14 (Table Column Optimization: 15 to 11 Columns & Horizontal Scroll Elimination):**
   * **Company Name & Brand Merged:** Combined Company Name and Brand Description into a single column (`Company Name & Brand`). Implemented 2-line clamp (`-webkit-line-clamp: 2`) with hover tooltip for long company names, plus an underneath badge (`🏷️ <Brand>`) for the brand.
   * **Category & Sub-Category Merged:** Combined Category and Sub-Category chips into a single column (`Category & Sub-Category`) with clear visual hierarchy (`🏷️ <Category>` on line 1, `↳ 📂 <Sub-Category>` on line 2).
@@ -315,3 +329,180 @@ When any supplier company name is clicked in the table, the **Side Drawer** slid
   * Synchronized code in [`Suppliers.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Suppliers.tsx).
 * **2026-10-12 (Local Purchase Searchable Dropdown):**
   * Upgraded Local Purchase supplier field from static `<select>` to dynamic type-ahead `SearchableDropdown`.
+
+---
+
+## 7. Master Quality Assurance (QA) & Verification Audit Checklist
+
+This audit checklist outlines the mandatory verification criteria for the **Suppliers** module. Every QA engineer, developer, and system auditor must use these criteria to verify end-to-end data integrity, UI/UX responsiveness, and system performance.
+
+### 7.1 Form Dropdown Behavior & Master Integrity Checklist
+
+| UI Element / Field | Type & Source | Expected Behavior & Validation Rules | Pass / Fail Criteria |
+| :--- | :--- | :--- | :--- |
+| **Company Name Floating Suggestions** | Floating Type-Ahead Autocomplete | • As user types, floating dropdown shows matching master suppliers.<br>• **Prefix-First Ranking:** Typing "O" or "Om" puts "Om..." at the top before fuzzy matches.<br>• **Untouchable / Non-Selectable:** `pointer-events: none;` clicking or pressing Enter does NOT select or overwrite what the user typed.<br>• **Duplicate Alert:** Exact name matches display an instant red warning banner (`⛔ Supplier already exists in Supplier Master! Cannot save duplicate.`). | **PASS:** Free typing is completely preserved; Enter does not force-select; duplicate banner alerts user immediately.<br>**FAIL:** Dropdown overwrites user typing or allows saving exact duplicate name. |
+| **Supplier Type** | Static Select | Options: `Manufacturer`, `Trader`, `Select`. Default is `Select`. | **PASS:** Correct options display and save cleanly to DB. |
+| **Country** | Searchable Master Select (`/masters/countries`) | Default preselected as **China**. Allows searching and selecting any valid country from Country Master. | **PASS:** Defaults to China; changing country cascades to Province filter. |
+| **Province / State** | Strict Master Select (`/masters/states`) | • Dropdown strictly queries active records from `/masters/states` for the selected Country.<br>• **Custom Text & Enter Prompt Disabled:** `allowCustomText={false}`. No `Use "..." (New) ↵ Enter` prompt.<br>• Non-master text typed by users is rejected and discarded on blur or Enter. | **PASS:** User can ONLY select verified provinces from master; pressing Enter on unlisted text does NOT add the item.<br>**FAIL:** Custom text creates a new phantom province or saves unverified string. |
+| **City** | Master Select (`/masters/cities`) | • Options filtered by selected Province/State.<br>• Strictly verified against City Master. | **PASS:** Lists cities belonging to selected province; persists selected city ID and name accurately. |
+| **Category** | Multi-Select Master (`/masters/product-categories`) | • Searchable multi-tag dropdown.<br>• Selecting categories unlocks and filters Sub-Category options.<br>• **Auto-Pruning:** Removing a category automatically removes all child Sub-Categories and Products previously selected. | **PASS:** Multi-tag chips render cleanly; deselecting category cascades auto-prune to sub-categories and products. |
+| **Sub Category (key strength)** | Cascading Grouped Multi-Select | • **Disabled state:** If no category selected, disabled with placeholder `"-- Please select Category first --"`.<br>• **Grouped Panel:** Organized under bold Category headers with `(x/y selected)` count.<br>• Header checkbox selects/deselects all sub-categories in that category.<br>• **Auto-Pruning:** Removing a sub-category automatically prunes its associated products. | **PASS:** Displays grouped under parent category; bulk select-all works per group; auto-prunes dependent products on deselect. |
+| **Products Supplied** | Cascading Grouped Multi-Select | • **Disabled states:** Disabled if no Category or Sub-Category selected.<br>• **Grouped Panel:** Products grouped by `${Category} › ${Sub-Category}` header.<br>• Top master `Select All`, group header select-all, and individual product checkboxes.<br>• Tag chips with instant removal (`✕`). | **PASS:** Only displays products matching selected categories and sub-categories; bulk selection functions correctly. |
+| **Supplier Grade** | Select | Options: `Grade A`, `Grade B`, `Grade C`, `Select`. | **PASS:** Persists grade; matches table inline dropdown. |
+| **Current Status** | Select | Options: `New`, `Existing`.<br>• **One-Way Progression Rule:** Once marked `Existing`, it cannot be changed back to `New`. | **PASS:** Transition to `Existing` locks out reversion to `New`. |
+| **Potential** | Select | Options: `Yes`, `No`, `Select` (Stored as lowercase `yes` / `no` in DB).<br>• Edit modal pre-populates accurately (case-insensitive mapping). | **PASS:** Pre-selects `Yes` or `No` accurately without resetting to blank when opening Edit modal. |
+| **Visited Factory / Office?** | Boolean Toggle (`Yes` / `No`) | • Default: `No`.<br>• When toggled to `Yes`, enables **Visit Remarks**, **Factory Videos**, and **Visit Photos & Media** upload. | **PASS:** Contextual inspection inputs smoothly expand when toggled to `Yes`. |
+
+---
+
+### 7.2 Saving, Inline Editing & Two-Way Sync Verification
+
+```
+[ Inside Form Modal ]  <====== Real-Time 2-Way Sync ======>  [ List Table Inline ]
+         │                                                            │
+         │ (Full Profile Save)                         (Instant Patch │ Grade & Potential)
+         ▼                                                            ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   CENTRAL DATABASE (/suppliers)                         │
+└────────────────────────────────────────────────────────────────────────┘
+                                 │
+                                 │ Opens via Blue Link
+                                 ▼
+               [ Complete View (720px Side Drawer) ]
+```
+
+1. **Inside Form Modal Creation & Update:**
+   * **Mandatory Field Enforcement:** Submitting without `Company Name`, `Country`, `Province`, `City`, or `Category` stops submission with clear input highlights.
+   * **Clean Save & Persistence:** Submitting valid form sends `POST` (create) or `PUT` (edit) to `/suppliers`, displays success toast, closes modal, and refreshes table without losing active pagination/filters.
+   * **Edit Pre-population:** Opening edit modal loads 100% of existing supplier fields, including multi-select arrays, secondary contacts, address, and media links.
+2. **Table Row Inline Editing (Grade & Potential):**
+   * **Grade Dropdown:** Modifying the grade inline triggers an immediate background `PATCH /suppliers/:id` with `{ supplier_grade: newGrade }`.
+   * **Potential Dropdown:** Modifying potential inline triggers an immediate background `PATCH /suppliers/:id` with `{ potential: newPotential }`.
+   * **Optimistic UI:** Row state updates instantly with visual feedback; reverts if network error occurs.
+3. **Two-Way Synchronization Across Modes:**
+   * Changing Grade or Potential via **Inline Table Edit** immediately reflects in the **Complete View (Side Drawer)** and **Inside Form Modal** without requiring a page refresh.
+   * Saving updates via **Inside Form Modal** immediately updates the corresponding row cells and badge indicators in the **List Table View**.
+
+---
+
+### 7.3 Blue Company Name Link & Complete View (720px Side Drawer) Audit
+
+> [!IMPORTANT]
+> **Core UX Requirement: Blue Company Name Link = Complete View (720px Side Drawer)**  
+> Clicking the company name link in the table must NEVER trigger a full page navigation or open a partial preview. It MUST slide open the **720px Side Drawer** displaying the **100% complete, full detail profile** of that supplier across all 5 structured cards.
+
+#### Verification Points for Blue Link & Side Drawer:
+1. **Interactive Blue Link Styling:**
+   * Company name must render in bold blue link color (`#2563eb` / `#1d4ed8`) with pointer cursor and subtle underline on hover.
+   * Clicking the link opens the 720px Side Drawer from the right edge with a smooth 60fps hardware-accelerated transition.
+2. **Complete 5-Card Information Architecture:**
+   * **Header Bar:**
+     * Prominent title: `Supplier Detail #<Company Name>`
+     * Badges: Supplier Type (`Manufacturer` / `Trader`), Active/Inactive status badge.
+     * Direct Action Button: `✏️ Edit Supplier` button that immediately launches the full edit modal with pre-populated values.
+   * **Card 1: 🏢 Company Profile & Classification:**
+     * Complete display of Company Name, Supplier Type, Brand, Tax ID / Unified Social Credit Code, Country, Province/State, City.
+     * **Full Address:** Renders complete street/building address spanning full width.
+     * **Categorization Badges:** All Product Categories, Sub-Categories, Products Supplied rendered as colored tag chips, plus Secondary Products text.
+   * **Card 2: 👤 Primary Contact Information:**
+     * Primary Contact Person & Designation.
+     * Calling Number with direct clickable `tel:` link.
+     * WhatsApp Number with direct one-click `https://wa.me/<number>` link (`↗`).
+     * WeChat Number / ID with WeChat badge (`🗨️`).
+     * Email Addresses rendered as individual badges with clickable `mailto:` links.
+     * Primary Website & Secondary Website rendered with `🌐` and `↗` links opening in new browser tabs.
+   * **Card 3: 🏭 Factory Visit & Inspection Media:**
+     * Factory Visited status: Green `✓ Yes, Visited` or neutral `No` badge.
+     * Inspector Visit Remarks formatted with proper line breaks.
+     * Factory Videos & Cloud Folders: Smart interactive badges recognizing YouTube (`▶️ YouTube Video ↗`), Google Drive (`📁 Google Drive ↗`), OneDrive (`📂 OneDrive ↗`), Vimeo (`🎬 Vimeo ↗`), or generic cloud links.
+     * Factory Inspection Photos: Responsive thumbnail grid allowing full-resolution click-to-preview.
+   * **Card 4: 📊 Pipeline Status & Commercial Evaluation:**
+     * Supplier Grade pill (`Grade A` / `Grade B` / `Grade C`).
+     * Current Status pill (`Existing` / `New`).
+     * Potential Status: Distinct green `YES` or red `NO` badge.
+     * Reason for Potential: Detailed narrative of why supplier is or isn't high-potential.
+     * Overall Remarks: Strategic notes and payment terms.
+   * **Card 5: 👥 Additional Contacts Roster:**
+     * Displays all secondary contact profiles.
+     * Each contact card includes: Name, Designation, Handling Territory badge (`📍 Local China`, `📍 Export India`, `📍 Export Africa`, etc.), and clickable phone, WhatsApp, WeChat, and email links.
+
+---
+
+### 7.4 Table Column Architecture & Layout Checklist (11 Consolidated Columns)
+
+To eliminate horizontal scrolling fatigue and provide maximum information density, the Supplier list table is consolidated into **11 optimized columns**:
+
+| Col # | Column Header | Content & Layout Rules | Verification Check |
+| :---: | :--- | :--- | :--- |
+| **1** | `[ ]` (Checkbox) | Row selection checkbox for bulk operations and export. | Multi-select and Select All in header operate smoothly. |
+| **2** | `Sr. No.` | Sequential row index based on current page offset. | Correct sequence across pagination pages. |
+| **3** | `Company Name & Brand` | • **Line 1:** Company Name in **blue link** with 2-line text clamp (`-webkit-line-clamp: 2`) and full name hover tooltip.<br>• **Line 2:** Brand Description rendered underneath with tag badge (`🏷️ <Brand>`). | Clicking blue name opens 720px Side Drawer; long names clamp gracefully without breaking row height. |
+| **4** | `Category & Sub-Category` | • **Line 1:** Category chips (`🏷️ <Category>`).<br>• **Line 2:** Sub-category chips indented underneath (`↳ 📂 <Sub-Category>`). | Clear visual hierarchy; eye-expander or tooltip shows chips exceeding limit. |
+| **5** | `Products Supplied & Secondary` | • **Line 1:** Primary Products Supplied chips.<br>• **Line 2:** Secondary products description text (`↳ <Secondary>`). | Consolidated in a single column without horizontal overflow. |
+| **6** | `Province & City` | Geographic location formatted as `<Province>, <City>` (e.g. `Guangdong, Foshan`). | Accurate geographic location; redundant Country column hidden. |
+| **7** | `Supplier Type` | Badge: `Manufacturer` (blue) vs. `Trader` (purple). | High-contrast visual differentiation. |
+| **8** | `Status` | Pill badge: `Existing` (emerald green) vs. `New` (amber). | Clear lifecycle status indication. |
+| **9** | `Grade` | **Inline editable dropdown:** `Grade A`, `Grade B`, `Grade C`. | Dropdown changes immediately save in background without opening modal. |
+| **10** | `Potential` | **Inline editable dropdown:** `Yes` (green), `No` (gray). | Dropdown changes immediately save in background without opening modal. |
+| **11** | `Actions` | • `✏️ Edit`: Opens full Edit Modal.<br>• `🗑️ Delete`: Soft-deletes record (blocked if `Existing` or `Potential == Yes`). | Deletion protection enforces business rules; edit pre-populates all data. |
+
+* **Layout Constraints:**
+  * **Zero Horizontal Scrollbar on 1080p:** 11-column consolidated layout fits cleanly within standard 1920×1080 screen resolution.
+  * **Freeze Columns Support:** Checkbox, Sr. No., and Company Name & Brand can be pinned to the left edge while horizontally panning extra columns on smaller screens.
+  * **Column Customizer:** Column visibility toggle dropdown allows toggling columns on and off dynamically.
+
+---
+
+### 7.5 Top Multi-Filter Views & Search Reset Verification
+
+| Filter Control | Source / Options | Operational Verification Rules | Reset Behavior |
+| :--- | :--- | :--- | :--- |
+| **Global Keyword Search** | Text input | Searches across `company_name`, `brand_description`, `contact_person`, and `products_supplied`. Debounced at 250ms. | Clearing input resets table to unfiltered state. |
+| **Category** | Searchable Master Dropdown | Filters suppliers associated with selected parent categories. Unlocks and restricts Product Sub Category filter. | Resetting restores all categories. |
+| **Product Sub Category** | Unlocked Typeahead Master | • When Category selected: filters within that category.<br>• **When Category empty:** Allows direct typeahead search across **ALL** sub-categories in the master database.<br>• Includes `"All"` reset option. | Selecting `"All"` clears filter and queries all sub-categories. |
+| **Product** | Unlocked Typeahead Master | • When Sub-Category / Category selected: filters within that hierarchy.<br>• **When Category empty:** Allows direct typeahead search across **ALL** products in the master database.<br>• Includes `"All"` reset option. | Selecting `"All"` clears product restriction. |
+| **Country** | Master Select | Defaults to all or China. Filtering by country cascades to Province filter. | Resetting to `"All"` queries all countries. |
+| **Province / State** | Unlocked Typeahead Master | • When Country selected: lists provinces of that country.<br>• **When Country empty:** Allows direct typeahead search across **ALL** provinces in the master database.<br>• Includes `"All"` reset option. | Selecting `"All"` clears province restriction. |
+| **City** | Unlocked Typeahead Master | • When Province selected: lists cities of that province.<br>• **When Province empty:** Allows direct typeahead search across **ALL** cities in the master database.<br>• Includes `"All"` reset option. | Selecting `"All"` clears city restriction. |
+| **Supplier Type** | Select | Options: `All`, `Manufacturer`, `Trader`. | `"All"` displays both types. |
+| **Supplier Grade** | Select | Options: `All`, `Grade A`, `Grade B`, `Grade C`. | `"All"` displays all grades. |
+| **Current Status** | Select | Options: `All`, `Existing`, `New`. | `"All"` displays both statuses. |
+| **Potential** | Select | Options: `All`, `Yes`, `No`. | `"All"` displays both potential flags. |
+| **Visited Factory / Office?** | Select | Options: `All`, `Yes`, `No`. | `"All"` displays both visited statuses. |
+
+---
+
+### 7.6 Bulk Import & Export Pipeline Verification
+
+1. **Sample Template Generation & Export:**
+   * Export action generates valid `.xlsx` / `.csv` spreadsheet with comprehensive headers:
+     * Company Details: `Name of Company*`, `Supplier Type`, `Brand Description`, `Tax ID Number`, `Country*`, `Province / State*`, `City*`, `Address`.
+     * Product Capabilities: `Product Category (multiple)*`, `Key Strength Sub-Category (multiple)`, `Products Supplied (multiple)`, `Secondary Products`.
+     * **Primary Contact:** `Contact Person`, `Designation`, `Calling Number`, `WhatsApp Number`, `WeChat Number / ID`, `Email Addresses`, `Primary Website`, `Secondary Website`.
+     * **Secondary Contact (Dual Contact Support):** `Contact Person 2`, `Designation 2`, `Calling Number 2`, `WhatsApp Number 2`, `WeChat Number 2`.
+     * Audit & Commercials: `Visited Factory / Office?`, `Visit Remarks`, `Factory Videos / Cloud Links`, `Supplier Grade`, `Current Status`, `Potential (Yes / No)`, `Reason for Potential`, `Overall Remarks`.
+   * **Schema Verification:** Confirms `Town` column is permanently absent from export headers.
+2. **Multi-Number Phone Parsing & Schema Limits:**
+   * Supports comma and slash-delimited multi-numbers in phone columns (e.g. `+86 13800000001, +86 13800000002 / +86 13800000003`).
+   * Database phone columns accommodate up to 150 characters (`VARCHAR(150)`).
+3. **Import Duplicate Detection & Master Resolution:**
+   * Verifies company name against existing database records; blocks accidental duplicates or provides merge options.
+   * Auto-resolves Province and City names against master databases with fuzzy/exact matching.
+   * **Cross-Module Isolation:** Strictly enforces that Supplier import templates are only accepted in `/suppliers/import` and rejected if attempted inside `/buyers/import`.
+
+---
+
+### 7.7 Loading Time & System Performance Benchmarks
+
+To guarantee high system responsiveness, the Supplier module must adhere to the following performance benchmarks:
+
+| Performance Metric | Target Benchmark | Architectural Optimization & Verification Method |
+| :--- | :--- | :--- |
+| **Initial Table Load (API Latency)** | **< 300 ms** | • Backend endpoint `/suppliers` uses indexed SQL queries with pagination (`limit=50`).<br>• Eager loading (`selectinload`) for categories, sub-categories, and secondary contacts eliminates N+1 query bottlenecks.<br>• Verified via Chrome DevTools Network Tab: `GET /api/v1/suppliers` latency < 300ms. |
+| **In-Memory Master Dropdown Lookups** | **0 ms** (Cached) | • Master lookup lists (Categories, Countries, Provinces, Cities) are fetched once and cached in-memory.<br>• Opening or re-opening Create/Edit Modal or Dropdown filters renders immediately with zero network delay. |
+| **Inline Edit Background PATCH** | **< 150 ms** | • Modifying Grade or Potential triggers optimistic UI update immediately.<br>• Lightweight background `PATCH /api/v1/suppliers/:id` completes in < 150ms without re-fetching full table. |
+| **Complete View (720px Side Drawer) Render** | **< 50 ms** (60 FPS) | • Side Drawer renders instantly utilizing existing loaded row state without blocking loading spinners.<br>• CSS transitions run via GPU-accelerated `transform: translateX(0)` at steady 60 FPS. |
+| **Keyword Search & Filter Debouncing** | **250 ms debounce** | • Typing in the global search bar debounces API requests by 250ms to prevent request spamming during active keystrokes. |
+| **Frontend Bundle & DOM Performance** | **< 3.5s Production Build** | • Vite production bundle compiles cleanly with 0 TypeScript errors.<br>• Table renders cleanly with virtualized/paginated DOM nodes preventing memory leaks. |
+
+---
