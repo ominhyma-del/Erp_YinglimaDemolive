@@ -79,6 +79,30 @@ import type {
   SupplierContact,
 } from "@/types";
 
+const WhatsAppIcon = ({ size = 15, style = {} }: { size?: number; style?: React.CSSProperties }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="#25D366"
+    style={{ flexShrink: 0, verticalAlign: "middle", ...style }}
+  >
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.414-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+  </svg>
+);
+
+const WeChatIcon = ({ size = 16, style = {} }: { size?: number; style?: React.CSSProperties }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="#07C160"
+    style={{ flexShrink: 0, verticalAlign: "middle", ...style }}
+  >
+    <path d="M8.691 2.188C3.891 2.188 0 5.478 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 01.213.665l-.538 2.002c-.044.164.12.302.264.223l2.457-1.343a.62.62 0 01.442-.057c1.03.3 2.124.463 3.251.463.313 0 .62-.014.925-.04-.51-.976-.798-2.073-.798-3.233 0-4.053 3.89-7.343 8.69-7.343.344 0 .683.02 1.016.052C17.65 4.542 13.524 2.188 8.691 2.188zm-2.32 3.655c.64 0 1.157.518 1.157 1.157 0 .64-.518 1.157-1.157 1.157-.64 0-1.157-.518-1.157-1.157 0-.64.518-1.157 1.157-1.157zm4.637 0c.64 0 1.157.518 1.157 1.157 0 .64-.518 1.157-1.157 1.157-.64 0-1.157-.518-1.157-1.157 0-.64.518-1.157 1.157-1.157zm5.798 5.068c-4.001 0-7.243 2.74-7.243 6.12 0 1.843.974 3.502 2.502 4.625a.49.49 0 01.177.553l-.448 1.668c-.036.136.1.252.22.186l2.048-1.119a.52.52 0 01.368-.047c.758.212 1.562.328 2.376.328 4.001 0 7.243-2.74 7.243-6.12 0-3.38-3.242-6.12-7.243-6.12zm-2.028 3.06c.533 0 .964.432.964.965 0 .533-.431.964-.964.964-.533 0-.964-.431-.964-.964 0-.533.431-.965.964-.965zm4.055 0c.533 0 .964.432.964.965 0 .533-.431.964-.964.964-.533 0-.965-.431-.965-.964 0-.533.432-.965.965-.965z" />
+  </svg>
+);
+
 /** Document rule: show 5 chips inline, the rest behind a "+N more" expander. */
 /** Import field list for Suppliers, shared by the Import Wizard button and the Sample Template downloader so the two can never drift apart. */
 const SUPPLIER_IMPORT_HEADERS: ImportHeader[] = [
@@ -5177,17 +5201,17 @@ export function SuppliersPage() {
                           href={`https://wa.me/${drawerSupplier.contact_whatsapp_number.replace(/[^0-9]/g, "")}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: "6px" }}
                         >
-                          💬 {drawerSupplier.contact_whatsapp_number} ↗
+                          <WhatsAppIcon size={16} /> {drawerSupplier.contact_whatsapp_number} ↗
                         </a>
                       ) : "—",
                     },
                     {
                       label: "WeChat Number",
                       value: drawerSupplier.contact_wechat_number ? (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "#059669", fontWeight: 500 }}>
-                          🗨️ {drawerSupplier.contact_wechat_number}
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "#059669", fontWeight: 500 }}>
+                          <WeChatIcon size={17} /> {drawerSupplier.contact_wechat_number}
                         </span>
                       ) : "—",
                     },
@@ -5404,11 +5428,15 @@ export function SuppliersPage() {
                             </a>
                           )}
                           {c.whatsapp_number && (
-                            <a href={`https://wa.me/${c.whatsapp_number.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500 }}>
-                              💬 {c.whatsapp_number}
+                            <a href={`https://wa.me/${c.whatsapp_number.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: "5px" }}>
+                              <WhatsAppIcon size={14} /> {c.whatsapp_number} ↗
                             </a>
                           )}
-                          {c.wechat_number && <span>🗨️ {c.wechat_number}</span>}
+                          {c.wechat_number && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", color: "#059669", fontWeight: 500 }}>
+                              <WeChatIcon size={15} /> {c.wechat_number}
+                            </span>
+                          )}
                           {c.email && (
                             <a href={`mailto:${c.email}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
                               ✉️ {c.email}

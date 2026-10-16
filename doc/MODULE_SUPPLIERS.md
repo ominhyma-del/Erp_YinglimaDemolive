@@ -224,9 +224,9 @@ When any supplier company name is clicked in the table, the **Side Drawer** slid
   * Category chips, Sub-Category chips, Products Supplied chips, Secondary Products description.
 * **Card 2: 👤 Primary Contact Information:**
   * Contact Person, Designation.
-  * Calling Number with direct clickable `tel:` link.
-  * WhatsApp Number with direct clickable `https://wa.me/...` link (`↗`).
-  * WeChat Number/ID with WeChat badge (`🗨️`).
+  * Calling Number with direct clickable `tel:` link (`📞`).
+  * WhatsApp Number with official WhatsApp SVG logo symbol (`#25D366`) and direct clickable `https://wa.me/...` link (`↗`).
+  * WeChat Number/ID with official WeChat SVG dual-bubble symbol (`#07C160`).
   * Email Addresses rendered as individual badges with clickable `mailto:` links.
   * Primary & Secondary Websites rendered with `🌐` and open-in-new-tab `↗` links.
 * **Card 3: 🏭 Factory Visit & Inspection Media:**
@@ -406,9 +406,9 @@ This audit checklist outlines the mandatory verification criteria for the **Supp
      * **Categorization Badges:** All Product Categories, Sub-Categories, Products Supplied rendered as colored tag chips, plus Secondary Products text.
    * **Card 2: 👤 Primary Contact Information:**
      * Primary Contact Person & Designation.
-     * Calling Number with direct clickable `tel:` link.
-     * WhatsApp Number with direct one-click `https://wa.me/<number>` link (`↗`).
-     * WeChat Number / ID with WeChat badge (`🗨️`).
+     * Calling Number with direct clickable `tel:` link (`📞`).
+     * WhatsApp Number with official WhatsApp SVG symbol (`#25D366`) and direct one-click `https://wa.me/<number>` link (`↗`).
+     * WeChat Number / ID with official WeChat SVG dual-bubble symbol (`#07C160`).
      * Email Addresses rendered as individual badges with clickable `mailto:` links.
      * Primary Website & Secondary Website rendered with `🌐` and `↗` links opening in new browser tabs.
    * **Card 3: 🏭 Factory Visit & Inspection Media:**

@@ -76,9 +76,31 @@ class ProductService:
         await self.repository.attach_planning_supplier_info([product])
         return product
 
-    async def list_paginated(self, query: ListQueryParams) -> tuple[list[Product], int]:
-        """Return a page of products matching the given search/sort/filter parameters."""
-        products, total = await self.repository.paginated_list(query)
+    async def list_paginated(
+        self, query: ListQueryParams, *, light: bool = False
+    ) -> tuple[list[Product], int]:
+        """Return a page of products matching the given search/sort/filter parameters.
+
+        With ``light=True`` the heavy ``images`` column is deferred (never read
+        from the DB) and an ``images_omitted`` flag tells clients whether photos
+        exist, to be fetched via the single-product endpoint on demand.
+        """
+        if light:
+            from sqlalchemy import String, cast, func
+            from sqlalchemy.orm import defer
+            from sqlalchemy.orm.attributes import set_committed_value
+
+            products, total = await self.repository.paginated_list(
+                query,
+                load_options=(defer(Product.images),),
+                extra_columns=(
+                    (func.length(cast(Product.images, String)) > 4).label("images_omitted"),
+                ),
+            )
+            for p in products:
+                set_committed_value(p, "images", None)
+        else:
+            products, total = await self.repository.paginated_list(query)
         hsn_ids = {p.hsn_id for p in products if p.hsn_id}
         if hsn_ids:
             hsns = await self.hsn_repository.list_all()

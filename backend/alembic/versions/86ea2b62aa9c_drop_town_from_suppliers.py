@@ -18,7 +18,7 @@ depends_on = None
 
 def upgrade() -> None:
     """Apply this migration's schema changes."""
-    op.drop_column('suppliers', 'town')
+    op.execute("ALTER TABLE suppliers DROP COLUMN IF EXISTS town")
 
 
 def downgrade() -> None:

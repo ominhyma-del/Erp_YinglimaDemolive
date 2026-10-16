@@ -83,6 +83,8 @@ export interface MasterRecord {
   id: string;
   version?: number;
   status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface Country extends MasterRecord {
@@ -194,6 +196,7 @@ export interface Product extends MasterRecord {
   description?: string | null;
   image_url?: string | null;
   images?: string[] | null;
+  images_omitted?: boolean | null;
   packaging_quantity?: number | null;
   packaging_net_weight?: number | null;
   packaging_gross_weight?: number | null;

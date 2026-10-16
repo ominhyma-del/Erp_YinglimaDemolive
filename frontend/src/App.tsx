@@ -14,49 +14,100 @@
  * /dashboard. It is now imported and routed below.
  */
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, lazy, useEffect, useRef } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { setUnauthorizedHandler } from "@/lib/api";
 import { LEGACY_REDIRECTS } from "@/lib/nav";
 
-// Synchronous direct imports for 0ms instant route switching with zero white-flash
+// Critical-path pages stay in the entry bundle.
 import { LoginPage } from "@/pages/Login";
 import { DashboardPage } from "@/pages/Dashboard";
 import { AuthCallbackPage } from "@/pages/AuthCallback";
 import { ForbiddenPage } from "@/pages/Forbidden";
-import { OrganizationPage } from "@/pages/Organization";
-import { AuditPage } from "@/pages/Audit";
-import { UsersPage } from "@/pages/Users";
-import { ProfilePage } from "@/pages/Profile";
-import { RbacPage } from "@/pages/Rbac";
-import { EffectivePermissionsPage } from "@/pages/EffectivePermissions";
-import { PositionsPage } from "@/pages/org/Positions";
-import { SuppliersPage } from "@/pages/Suppliers";
-import { BuyersPage } from "@/pages/Buyers";
-import { InquiriesPage } from "@/pages/Inquiries";
-import { PlanningPage } from "@/pages/Planning";
 
-import { CountriesPage } from "@/pages/masters/Countries";
-import { StatesPage } from "@/pages/masters/States";
-import { CitiesPage } from "@/pages/masters/Cities";
-import { CompanyListPage } from "@/pages/masters/CompanyList";
-import { CurrenciesPage } from "@/pages/masters/Currencies";
-import { UomPage } from "@/pages/masters/Uom";
-import { HsnPage } from "@/pages/masters/Hsn";
-import { BrandsPage } from "@/pages/masters/Brands";
-import { SupplierTypesPage } from "@/pages/masters/SupplierTypes";
-import { BuyerTypesPage } from "@/pages/masters/BuyerTypes";
-import { CategoriesPage } from "@/pages/masters/Categories";
-import { SubCategoriesPage } from "@/pages/masters/SubCategories";
-import { ProductsPage } from "@/pages/masters/Products";
-import { ProductPricesPage } from "@/pages/ProductPrices";
-import { ProductGalleryPage } from "@/pages/ProductGallery";
-import { LocalPurchasesPage } from "@/pages/purchases/LocalPurchases";
-import { LocalPurchaseFormPage } from "@/pages/purchases/LocalPurchaseForm";
-import { SaleProcessListPage } from "@/pages/sales/SaleProcessList";
-import { SaleProcessFormPage } from "@/pages/sales/SaleProcessForm";
-import { TrashPage } from "@/pages/Trash";
-import PublicSupplierQuotePage from "@/pages/PublicSupplierQuotePage";
+// Every other page is code-split, then prefetched when the browser is idle
+// (see prefetchAllPages below) so route switches still feel instant.
+const pageLoaders = {
+  Organization: () => import("@/pages/Organization").then((m) => ({ default: m.OrganizationPage })),
+  Audit: () => import("@/pages/Audit").then((m) => ({ default: m.AuditPage })),
+  Users: () => import("@/pages/Users").then((m) => ({ default: m.UsersPage })),
+  Profile: () => import("@/pages/Profile").then((m) => ({ default: m.ProfilePage })),
+  Rbac: () => import("@/pages/Rbac").then((m) => ({ default: m.RbacPage })),
+  EffectivePermissions: () => import("@/pages/EffectivePermissions").then((m) => ({ default: m.EffectivePermissionsPage })),
+  Positions: () => import("@/pages/org/Positions").then((m) => ({ default: m.PositionsPage })),
+  Suppliers: () => import("@/pages/Suppliers").then((m) => ({ default: m.SuppliersPage })),
+  Buyers: () => import("@/pages/Buyers").then((m) => ({ default: m.BuyersPage })),
+  Inquiries: () => import("@/pages/Inquiries").then((m) => ({ default: m.InquiriesPage })),
+  Planning: () => import("@/pages/Planning").then((m) => ({ default: m.PlanningPage })),
+  Countries: () => import("@/pages/masters/Countries").then((m) => ({ default: m.CountriesPage })),
+  States: () => import("@/pages/masters/States").then((m) => ({ default: m.StatesPage })),
+  Cities: () => import("@/pages/masters/Cities").then((m) => ({ default: m.CitiesPage })),
+  CompanyList: () => import("@/pages/masters/CompanyList").then((m) => ({ default: m.CompanyListPage })),
+  Currencies: () => import("@/pages/masters/Currencies").then((m) => ({ default: m.CurrenciesPage })),
+  Uom: () => import("@/pages/masters/Uom").then((m) => ({ default: m.UomPage })),
+  Hsn: () => import("@/pages/masters/Hsn").then((m) => ({ default: m.HsnPage })),
+  Brands: () => import("@/pages/masters/Brands").then((m) => ({ default: m.BrandsPage })),
+  SupplierTypes: () => import("@/pages/masters/SupplierTypes").then((m) => ({ default: m.SupplierTypesPage })),
+  BuyerTypes: () => import("@/pages/masters/BuyerTypes").then((m) => ({ default: m.BuyerTypesPage })),
+  Categories: () => import("@/pages/masters/Categories").then((m) => ({ default: m.CategoriesPage })),
+  SubCategories: () => import("@/pages/masters/SubCategories").then((m) => ({ default: m.SubCategoriesPage })),
+  Products: () => import("@/pages/masters/Products").then((m) => ({ default: m.ProductsPage })),
+  ProductPrices: () => import("@/pages/ProductPrices").then((m) => ({ default: m.ProductPricesPage })),
+  ProductGallery: () => import("@/pages/ProductGallery").then((m) => ({ default: m.ProductGalleryPage })),
+  LocalPurchases: () => import("@/pages/purchases/LocalPurchases").then((m) => ({ default: m.LocalPurchasesPage })),
+  LocalPurchaseForm: () => import("@/pages/purchases/LocalPurchaseForm").then((m) => ({ default: m.LocalPurchaseFormPage })),
+  SaleProcessList: () => import("@/pages/sales/SaleProcessList").then((m) => ({ default: m.SaleProcessListPage })),
+  SaleProcessForm: () => import("@/pages/sales/SaleProcessForm").then((m) => ({ default: m.SaleProcessFormPage })),
+  Trash: () => import("@/pages/Trash").then((m) => ({ default: m.TrashPage })),
+  PublicSupplierQuote: () => import("@/pages/PublicSupplierQuotePage"),
+};
+
+const OrganizationPage = lazy(pageLoaders.Organization);
+const AuditPage = lazy(pageLoaders.Audit);
+const UsersPage = lazy(pageLoaders.Users);
+const ProfilePage = lazy(pageLoaders.Profile);
+const RbacPage = lazy(pageLoaders.Rbac);
+const EffectivePermissionsPage = lazy(pageLoaders.EffectivePermissions);
+const PositionsPage = lazy(pageLoaders.Positions);
+const SuppliersPage = lazy(pageLoaders.Suppliers);
+const BuyersPage = lazy(pageLoaders.Buyers);
+const InquiriesPage = lazy(pageLoaders.Inquiries);
+const PlanningPage = lazy(pageLoaders.Planning);
+const CountriesPage = lazy(pageLoaders.Countries);
+const StatesPage = lazy(pageLoaders.States);
+const CitiesPage = lazy(pageLoaders.Cities);
+const CompanyListPage = lazy(pageLoaders.CompanyList);
+const CurrenciesPage = lazy(pageLoaders.Currencies);
+const UomPage = lazy(pageLoaders.Uom);
+const HsnPage = lazy(pageLoaders.Hsn);
+const BrandsPage = lazy(pageLoaders.Brands);
+const SupplierTypesPage = lazy(pageLoaders.SupplierTypes);
+const BuyerTypesPage = lazy(pageLoaders.BuyerTypes);
+const CategoriesPage = lazy(pageLoaders.Categories);
+const SubCategoriesPage = lazy(pageLoaders.SubCategories);
+const ProductsPage = lazy(pageLoaders.Products);
+const ProductPricesPage = lazy(pageLoaders.ProductPrices);
+const ProductGalleryPage = lazy(pageLoaders.ProductGallery);
+const LocalPurchasesPage = lazy(pageLoaders.LocalPurchases);
+const LocalPurchaseFormPage = lazy(pageLoaders.LocalPurchaseForm);
+const SaleProcessListPage = lazy(pageLoaders.SaleProcessList);
+const SaleProcessFormPage = lazy(pageLoaders.SaleProcessForm);
+const TrashPage = lazy(pageLoaders.Trash);
+const PublicSupplierQuotePage = lazy(pageLoaders.PublicSupplierQuote);
+
+/** Warm every page chunk in the background once the app is idle. */
+function prefetchAllPages(): void {
+  const run = () => {
+    for (const load of Object.values(pageLoaders)) {
+      void load().catch(() => undefined);
+    }
+  };
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void })
+    .requestIdleCallback;
+  if (ric) ric(run, { timeout: 4000 });
+  else window.setTimeout(run, 2000);
+}
+
 
 import { NetworkStatusNotifier } from "@/components/NetworkStatusNotifier";
 import { LiveConnectionIndicator } from "@/components/LiveConnectionIndicator";
@@ -68,6 +119,10 @@ import { processIncomingSsoHandover } from "@/lib/ssoBridge";
 
 export function App() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    prefetchAllPages();
+  }, []);
 
   // Initialize global paste auto-clean across all inputs and forms
   useEffect(() => {

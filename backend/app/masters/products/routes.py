@@ -136,9 +136,13 @@ async def list_products(
     query: ListQueryParams = Depends(get_list_query_params),
     service: ProductService = Depends(get_product_service),
     _current_user: CurrentUser = Depends(require_permission("product.view")),
+    light_list: bool = False,
 ) -> dict:
-    """List products, with search/sort/filter/pagination."""
-    products, total = await service.list_paginated(query)
+    """List products, with search/sort/filter/pagination.
+
+    ``light_list=true`` omits the heavy base64 images (see ``images_omitted``).
+    """
+    products, total = await service.list_paginated(query, light=light_list)
     meta = PageMeta.build(page=query.page.page, page_size=query.page.page_size, total_records=total).as_meta_dict()
 
     data = [ProductRead.model_validate(p) for p in products]
