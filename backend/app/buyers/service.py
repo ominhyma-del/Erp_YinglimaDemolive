@@ -384,7 +384,7 @@ class BuyerService:
         # A version-only payload (no other field actually changed) still
         # correctly reaches repository.update() and is still checked,
         # since `version` alone makes `changes` non-empty.
-        changes = {k: v for k, v in field_values.items() if v is not None}
+        changes = dict(field_values)
         if changes:
             await self.repository.update(buyer, **changes)
 
@@ -406,27 +406,47 @@ class BuyerService:
         }
         if primary_contact_fields.intersection(field_values.keys()):
             primary = await self.contact_repository.get_primary_contact(buyer_id)
-            if primary is not None:
-                await self.contact_repository.update(
-                    primary,
-                    salutation=field_values.get("contact_salutation", primary.salutation),
-                    person_name=field_values.get("contact_full_name", primary.person_name) or primary.person_name,
-                    designation=field_values.get("contact_designation", primary.designation),
-                    calling_number=field_values.get("contact_calling_number", primary.calling_number),
-                    whatsapp_number=field_values.get("contact_whatsapp_number", primary.whatsapp_number),
-                )
-            elif field_values.get("contact_full_name"):
-                await self.contact_repository.create(
-                    buyer_id=buyer_id,
-                    salutation=field_values.get("contact_salutation"),
-                    person_name=field_values["contact_full_name"],
-                    designation=field_values.get("contact_designation"),
-                    country_id=field_values.get("country_id", buyer.country_id),
-                    calling_number=field_values.get("contact_calling_number"),
-                    whatsapp_number=field_values.get("contact_whatsapp_number"),
-                    email=None,
-                    is_primary=True,
-                )
+            new_name = field_values.get("contact_full_name")
+            if new_name:
+                if primary is not None:
+                    contact_updates: dict[str, Any] = {"person_name": new_name}
+                    if "contact_salutation" in field_values:
+                        contact_updates["salutation"] = field_values["contact_salutation"]
+                    if "contact_designation" in field_values:
+                        contact_updates["designation"] = field_values["contact_designation"]
+                    if "contact_calling_number" in field_values:
+                        contact_updates["calling_number"] = field_values["contact_calling_number"]
+                    if "contact_whatsapp_number" in field_values:
+                        contact_updates["whatsapp_number"] = field_values["contact_whatsapp_number"]
+                    await self.contact_repository.update(primary, **contact_updates)
+                else:
+                    await self.contact_repository.create(
+                        buyer_id=buyer_id,
+                        salutation=field_values.get("contact_salutation"),
+                        person_name=new_name,
+                        designation=field_values.get("contact_designation"),
+                        country_id=field_values.get("country_id", buyer.country_id),
+                        calling_number=field_values.get("contact_calling_number"),
+                        whatsapp_number=field_values.get("contact_whatsapp_number"),
+                        email=None,
+                        is_primary=True,
+                    )
+            elif "contact_full_name" in field_values and not new_name:
+                # User explicitly cleared the primary contact name from the main form
+                if primary is not None:
+                    await self.contact_repository.delete(primary)
+            elif primary is not None:
+                contact_updates = {}
+                if "contact_salutation" in field_values:
+                    contact_updates["salutation"] = field_values["contact_salutation"]
+                if "contact_designation" in field_values:
+                    contact_updates["designation"] = field_values["contact_designation"]
+                if "contact_calling_number" in field_values:
+                    contact_updates["calling_number"] = field_values["contact_calling_number"]
+                if "contact_whatsapp_number" in field_values:
+                    contact_updates["whatsapp_number"] = field_values["contact_whatsapp_number"]
+                if contact_updates:
+                    await self.contact_repository.update(primary, **contact_updates)
 
         await self._invalidate_cache()
         # Same store-on-write hook as Products/Suppliers -- Buyers is a
@@ -952,11 +972,27 @@ class BuyerService:
                 # Update primary contact if contact name was supplied in this row
                 contact_name = field_values.get("contact_full_name")
                 if contact_name and str(contact_name).strip():
-                    primary_contact = next((c for c in getattr(target_buyer, "contacts", []) if c.is_primary), None)
+                    clean_cname = str(contact_name).strip()
+                    if (target_buyer.contact_full_name or "").strip() != clean_cname:
+                        update_kwargs["contact_full_name"] = clean_cname
+                        has_changes = True
+                    if field_values.get("contact_salutation") and (target_buyer.contact_salutation or "").strip() != str(field_values["contact_salutation"]).strip():
+                        update_kwargs["contact_salutation"] = str(field_values["contact_salutation"]).strip()
+                        has_changes = True
+                    if field_values.get("contact_designation") and (target_buyer.contact_designation or "").strip() != str(field_values["contact_designation"]).strip():
+                        update_kwargs["contact_designation"] = str(field_values["contact_designation"]).strip()
+                        has_changes = True
+
+                    primary_contact = next((c for c in getattr(target_buyer, "contacts", []) if c.is_primary and getattr(c, "deleted_at", None) is None), None)
+                    if primary_contact is None:
+                        primary_contact = await self.contact_repository.get_primary_contact(target_buyer.id)
+
                     if primary_contact:
                         c_updates: dict[str, Any] = {}
-                        if (primary_contact.person_name or "").strip() != str(contact_name).strip():
-                            c_updates["person_name"] = str(contact_name).strip()
+                        if (primary_contact.person_name or "").strip() != clean_cname:
+                            c_updates["person_name"] = clean_cname
+                        if field_values.get("contact_salutation") and (primary_contact.salutation or "").strip() != str(field_values["contact_salutation"]).strip():
+                            c_updates["salutation"] = str(field_values["contact_salutation"]).strip()
                         if field_values.get("contact_designation") and (primary_contact.designation or "").strip() != str(field_values["contact_designation"]).strip():
                             c_updates["designation"] = str(field_values["contact_designation"]).strip()
                         if calling_num and (primary_contact.calling_number or "").strip() != str(calling_num).strip():
@@ -971,7 +1007,7 @@ class BuyerService:
                         await self.contact_repository.create(
                             buyer_id=target_buyer.id,
                             salutation=field_values.get("contact_salutation"),
-                            person_name=str(contact_name).strip(),
+                            person_name=clean_cname,
                             designation=field_values.get("contact_designation"),
                             country_id=update_kwargs.get("country_id", target_buyer.country_id),
                             calling_number=calling_num or target_buyer.contact_calling_number,

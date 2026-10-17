@@ -1451,13 +1451,29 @@ export function SelectField({
   }, [children]);
 
   const options = useMemo(() => {
+    function extractNodeText(node: ReactNode): string {
+      if (node == null) return "";
+      if (typeof node === "string" || typeof node === "number") return String(node);
+      if (Array.isArray(node)) return node.map(extractNodeText).join(" ");
+      if (React.isValidElement(node) && node.props) {
+        const p = node.props as any;
+        if (typeof p.label === "string") return p.label;
+        if (p.children) return extractNodeText(p.children);
+      }
+      return "";
+    }
+
     const list: { value: string; label: string; element: ReactNode; disabled?: boolean }[] = [];
     flattenedChildren.forEach((child) => {
+      const childProps = child.props as any;
+      const textLabel = typeof childProps.label === "string" && childProps.label.trim()
+        ? childProps.label
+        : extractNodeText(childProps.children) || String(childProps.value ?? "");
       list.push({
-        value: String(child.props.value ?? ""),
-        label: typeof child.props.children === "string" ? child.props.children : String(child.props.children ?? child.props.value ?? ""),
-        element: child.props.children ?? child.props.value ?? "",
-        disabled: child.props.disabled,
+        value: String(childProps.value ?? ""),
+        label: textLabel,
+        element: childProps.children ?? childProps.value ?? "",
+        disabled: childProps.disabled,
       });
     });
     return list;

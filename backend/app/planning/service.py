@@ -303,6 +303,8 @@ class PlanningService:
         name: str,
         organization_id: uuid.UUID | None = None,
         branch_id: str | None = None,
+        buyer_id: uuid.UUID | None = None,
+        buyer_branch_name: str | None = None,
         mum_group_label: str = "Mum",
         description: str | None = None,
         user_id: uuid.UUID,
@@ -316,10 +318,15 @@ class PlanningService:
         if await self.sheet_repository.get_by_name(name):
             raise ConflictException(f"A sheet named {name!r} already exists.")
 
-        # Validate organization_id/branch_id against Product Master's real
-        # organization/branch list if provided -- every sheet must represent one
-        # actual, existing branch, not just a name that sounds like one.
-        if organization_id is not None or branch_id:
+        if buyer_id is not None:
+            # Sheet is linked to a Buyer: organization_id and branch_id are not required
+            buyer_branch_name = (buyer_branch_name or "").strip() or name
+            organization_id = None
+            branch_id = None
+        elif organization_id is not None or branch_id:
+            # Validate organization_id/branch_id against Product Master's real
+            # organization/branch list if provided -- every sheet must represent one
+            # actual, existing branch, not just a name that sounds like one.
             branch_id = (branch_id or "").strip()
             if not branch_id:
                 raise BadRequestException("A branch is required to create a sheet.")
@@ -345,6 +352,8 @@ class PlanningService:
             created_by=user_id,
             organization_id=organization_id,
             branch_id=branch_id,
+            buyer_id=buyer_id,
+            buyer_branch_name=buyer_branch_name,
             item_source_type=PlanningColumnSourceType.LINKED_LOOKUP,
             item_source_module="product",
             item_source_field="product_name",
@@ -364,7 +373,7 @@ class PlanningService:
         base_columns = [
             ("TEST(Y/N)", PlanningColumnDataType.TEXT, PlanningColumnSourceType.MANUAL, None, None),
             ("APPROVAL DATE", PlanningColumnDataType.TEXT, PlanningColumnSourceType.MANUAL, None, None),
-            ("Supplier Name", PlanningColumnDataType.TEXT, PlanningColumnSourceType.LINKED_LOOKUP, "product", "supplier_name"),
+            ("Brand of Supplier", PlanningColumnDataType.TEXT, PlanningColumnSourceType.LINKED_LOOKUP, "product", "supplier_name"),
             ("City", PlanningColumnDataType.TEXT, PlanningColumnSourceType.LINKED_LOOKUP, "product", "supplier_city"),
             ("PKG QTY", PlanningColumnDataType.NUMBER, PlanningColumnSourceType.LINKED_LOOKUP, "product", "packaging_quantity"),
             ("UNIT WEIGHT/PKG (KG)", PlanningColumnDataType.NUMBER, PlanningColumnSourceType.LINKED_LOOKUP, "product", "packaging_gross_weight"),
@@ -533,7 +542,7 @@ class PlanningService:
                     user_id=user_id,
                     username=username,
                 )
-            except (BadRequestException, FormulaError):
+            except BadRequestException:
                 # A column whose config can't carry over as-is (e.g. an
                 # ordinary FORMULA referencing a column that didn't exist
                 # yet at copy time) is left MANUAL rather than aborting
@@ -955,7 +964,7 @@ class PlanningService:
 
         # 2. Check and ensure shared product lookup columns exist
         base_lookup_specs = [
-            ("Supplier Name", PlanningColumnDataType.TEXT, "supplier_name"),
+            ("Brand of Supplier", PlanningColumnDataType.TEXT, "supplier_name"),
             ("City", PlanningColumnDataType.TEXT, "supplier_city"),
             ("PKG QTY", PlanningColumnDataType.NUMBER, "packaging_quantity"),
             ("UNIT WEIGHT/PKG (KG)", PlanningColumnDataType.NUMBER, "packaging_gross_weight"),
@@ -2774,11 +2783,9 @@ class PlanningService:
                 if (
                     s.item_source_type == PlanningColumnSourceType.LINKED_LOOKUP
                     and s.item_source_module == "product"
-                    and s.organization_id is not None
                 ):
-                    org_match = str(s.organization_id) in prod_org_ids
-                    branch_match = s.branch_id is None or (s.branch_id in prod_branch_ids)
-                    if org_match and branch_match:
+                    if s.buyer_id is not None:
+                        # Buyer sheets can contain products across all organizations
                         exists_stmt = select(PlanningRow.id).where(
                             PlanningRow.sheet_id == s.id,
                             PlanningRow.linked_record_id == record_id,
@@ -2799,17 +2806,41 @@ class PlanningService:
                             )
                             self.row_repository.session.add(single_row)
                             await self.row_repository.session.flush()
-                    else:
-                        remove_stmt = (
-                            update(PlanningRow)
-                            .where(
+                    elif s.organization_id is not None:
+                        org_match = str(s.organization_id) in prod_org_ids
+                        branch_match = s.branch_id is None or (s.branch_id in prod_branch_ids)
+                        if org_match and branch_match:
+                            exists_stmt = select(PlanningRow.id).where(
                                 PlanningRow.sheet_id == s.id,
                                 PlanningRow.linked_record_id == record_id,
                                 PlanningRow.deleted_at.is_(None),
                             )
-                            .values({PlanningRow.deleted_at: datetime.now(timezone.utc)})
-                        )
-                        await self.row_repository.session.execute(remove_stmt)
+                            exists = (await self.row_repository.session.execute(exists_stmt)).scalar_one_or_none()
+                            if not exists:
+                                existing_rows = await self.row_repository.list_for_sheet(s.id)
+                                item_display = active_prod.product_name_tally or active_prod.product_name
+                                label_val = item_display if item_display is not None else "Product record"
+                                single_row = PlanningRow(
+                                    id=uuid.uuid4(),
+                                    sheet_id=s.id,
+                                    label=label_val,
+                                    position=len(existing_rows),
+                                    linked_record_id=record_id,
+                                    created_by=s.created_by,
+                                )
+                                self.row_repository.session.add(single_row)
+                                await self.row_repository.session.flush()
+                        else:
+                            remove_stmt = (
+                                update(PlanningRow)
+                                .where(
+                                    PlanningRow.sheet_id == s.id,
+                                    PlanningRow.linked_record_id == record_id,
+                                    PlanningRow.deleted_at.is_(None),
+                                )
+                                .values({PlanningRow.deleted_at: datetime.now(timezone.utc)})
+                            )
+                            await self.row_repository.session.execute(remove_stmt)
 
         # --- 1. LINKED_LOOKUP cells pointing at this exact record ---
         affected_cells = await self.cell_repository.list_linked_to_record(record_id)

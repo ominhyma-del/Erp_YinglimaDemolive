@@ -23,7 +23,7 @@ const PRODUCT_PRICE_COLUMNS = [
   "Product Name & Code",
   "Category & Brand",
   "Best Price (Quote)",
-  "Primary Supplier",
+  "Supplier Brand",
   "Actions",
 ];
 
@@ -77,6 +77,7 @@ interface SupplierLookupItem {
   id: string;
   company_name: string;
   supplier_type?: string;
+  brand_description?: string;
 }
 
 function resolveImageUrl(url: string | null | undefined): string {
@@ -356,13 +357,18 @@ export function ProductPricesPage() {
         ? list.filter(
             (s) =>
               s.company_name.toLowerCase().includes(clean) ||
+              (s.brand_description && s.brand_description.toLowerCase().includes(clean)) ||
               (s.supplier_type && s.supplier_type.toLowerCase().includes(clean))
           )
         : list;
-      return filtered.map((s) => ({
-        value: s.id,
-        label: `${s.company_name}${s.supplier_type ? ` (${s.supplier_type})` : ""}`,
-      }));
+      return filtered.map((s) => {
+        const brand = s.brand_description?.trim();
+        const display = brand ? `${brand} (${s.company_name})` : s.company_name;
+        return {
+          value: s.id,
+          label: `${display}${s.supplier_type ? ` [${s.supplier_type}]` : ""}`,
+        };
+      });
     },
     [allSuppliers]
   );
@@ -381,7 +387,10 @@ export function ProductPricesPage() {
         }
       }
       const match = list.find((s) => s.id === id);
-      return match ? `${match.company_name}${match.supplier_type ? ` (${match.supplier_type})` : ""}` : id;
+      if (!match) return id;
+      const brand = match.brand_description?.trim();
+      const display = brand ? `${brand} (${match.company_name})` : match.company_name;
+      return `${display}${match.supplier_type ? ` [${match.supplier_type}]` : ""}`;
     },
     [allSuppliers]
   );
@@ -1703,7 +1712,7 @@ export function ProductPricesPage() {
                               ...getFreezeStyle(4, true),
                             }}
                           >
-                            Primary Supplier
+                            Supplier Brand
                           </th>
                         );
                       case 5:

@@ -739,7 +739,42 @@ export function LocalPurchasesPage() {
 
                         {/* Supplier */}
                         <td style={{ fontWeight: 600, color: "#334155" }}>
-                          {p.supplier_name}
+                          <div>
+                            {(() => {
+                              const raw = p.supplier_name || "-";
+                              const m = raw.match(/^(.+?)\s*\((.+?)\)$/);
+                              if (m) {
+                                return (
+                                  <span>
+                                    <strong style={{ fontWeight: 700, color: "#0f172a" }}>{m[1]}</strong>
+                                    <span style={{ color: "#64748b", marginLeft: "4px", fontWeight: 400 }}>({m[2]})</span>
+                                  </span>
+                                );
+                              }
+                              return <strong style={{ fontWeight: 600, color: "#1e293b" }}>{raw}</strong>;
+                            })()}
+                          </div>
+                          {p.consignment_code && (
+                            <div style={{ marginTop: "4px" }}>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  color: "#0369a1",
+                                  background: "#e0f2fe",
+                                  border: "1px solid #bae6fd",
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                🚢 {p.consignment_code}
+                                {p.branch_name ? ` • ${p.branch_name}` : ""}
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Invoice Total Value with VAT */}

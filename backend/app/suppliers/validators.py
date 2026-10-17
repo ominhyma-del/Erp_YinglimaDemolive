@@ -149,7 +149,17 @@ def validate_supplier_row(raw_row: dict[str, Any], row_number: int) -> dict[str,
     email_raw = _get_field(raw_row, "Emails", "Email", "email", "emails")
     email = validate_email_format(email_raw) if email_raw else None
 
-    brand_desc = _get_field(raw_row, "Brand Description", "Brand", "brand_description")
+    brand_desc = _get_field(
+        raw_row,
+        "Brand of Supplier's Products",
+        "Brand of Suppliers Products",
+        "Brand of Supplier",
+        "Supplier Brand",
+        "Brand Description",
+        "Brand Name",
+        "Brand",
+        "brand_description",
+    )
     contact_name = _get_field(
         raw_row, "Contact Person", "Contact Person 1", "Contact Person Name", "Contact Person Name 1",
         "Primary Contact Person", "contact_full_name", "contact_person"

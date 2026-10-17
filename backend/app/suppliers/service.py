@@ -20,6 +20,8 @@ import re
 import uuid
 from typing import Any
 
+from sqlalchemy import select
+
 from app.cache.manager import CacheManager
 from app.common.list_query import ListQueryParams
 from app.core.exceptions import BadRequestException, ConflictException, NotFoundException
@@ -238,19 +240,25 @@ class SupplierService:
         potential_blocks_delete = supplier.potential is not None and supplier.potential.value == "yes"
         return not (status_blocks_delete or potential_blocks_delete)
 
-    async def list_suppliers_lookup(self) -> list[dict[str, str]]:
-        """Return lightweight list of active suppliers {id, company_name}, cached in CacheManager."""
+    async def list_suppliers_lookup(self) -> list[dict[str, Any]]:
+        """Return lightweight list of active suppliers {id, company_name, brand_description}, cached in CacheManager."""
         cached = await self.cache_manager.get_dropdown(DROPDOWN_CACHE_NAME)
         if cached is not None:
             return cached
-        from sqlalchemy import select
         stmt = (
-            select(Supplier.id, Supplier.company_name)
+            select(Supplier.id, Supplier.company_name, Supplier.brand_description)
             .where(Supplier.deleted_at.is_(None), Supplier.is_active.is_(True))
             .order_by(Supplier.company_name.asc())
         )
         res = await self.repository.session.execute(stmt)
-        data = [{"id": str(r.id), "company_name": r.company_name} for r in res.all()]
+        data = [
+            {
+                "id": str(r.id),
+                "company_name": r.company_name,
+                "brand_description": r.brand_description or "",
+            }
+            for r in res.all()
+        ]
         await self.cache_manager.set_dropdown(DROPDOWN_CACHE_NAME, data)
         return data
 
@@ -399,6 +407,10 @@ class SupplierService:
             "city_id" in field_values
             and field_values["city_id"] != supplier.city_id
         )
+        brand_changed = (
+            "brand_description" in field_values
+            and field_values["brand_description"] != supplier.brand_description
+        )
 
         old_product_ids = await self.repository.list_all_product_ids(supplier_id)
         old_product_set = set(old_product_ids)
@@ -406,8 +418,12 @@ class SupplierService:
         products_changed = (new_product_set != old_product_set)
 
         affected_product_ids: set[uuid.UUID] = set()
-        if company_name_changed or city_changed:
+        if company_name_changed or city_changed or brand_changed:
             affected_product_ids.update(new_product_set | old_product_set)
+            from app.masters.products.models import Product
+            stmt_prods = select(Product.id).where(Product.supplier_id == supplier_id, Product.deleted_at.is_(None))
+            res_prods = await self.repository.session.execute(stmt_prods)
+            affected_product_ids.update(res_prods.scalars().all())
         elif products_changed:
             affected_product_ids.update(new_product_set ^ old_product_set)
 
@@ -432,30 +448,53 @@ class SupplierService:
         }
         if primary_contact_fields.intersection(field_values.keys()):
             primary = await self.contact_repository.get_primary_contact(supplier_id)
-            if primary is not None:
-                await self.contact_repository.update(
-                    primary,
-                    salutation=field_values.get("contact_salutation", primary.salutation),
-                    person_name=field_values.get("contact_full_name", primary.person_name) or primary.person_name,
-                    designation=field_values.get("contact_designation", primary.designation),
-                    calling_number=field_values.get("contact_calling_number", primary.calling_number),
-                    whatsapp_number=field_values.get("contact_whatsapp_number", primary.whatsapp_number),
-                    wechat_number=field_values.get("contact_wechat_number", primary.wechat_number),
-                )
-            elif field_values.get("contact_full_name"):
-                await self.contact_repository.create(
-                    supplier_id=supplier_id,
-                    salutation=field_values.get("contact_salutation"),
-                    person_name=field_values["contact_full_name"],
-                    designation=field_values.get("contact_designation"),
-                    handling_territory=None,
-                    country_id=country_id,
-                    calling_number=field_values.get("contact_calling_number"),
-                    whatsapp_number=field_values.get("contact_whatsapp_number"),
-                    wechat_number=field_values.get("contact_wechat_number"),
-                    email=None,
-                    is_primary=True,
-                )
+            new_name = field_values.get("contact_full_name")
+            if new_name:
+                if primary is not None:
+                    contact_updates: dict[str, Any] = {"person_name": new_name}
+                    if "contact_salutation" in field_values:
+                        contact_updates["salutation"] = field_values["contact_salutation"]
+                    if "contact_designation" in field_values:
+                        contact_updates["designation"] = field_values["contact_designation"]
+                    if "contact_calling_number" in field_values:
+                        contact_updates["calling_number"] = field_values["contact_calling_number"]
+                    if "contact_whatsapp_number" in field_values:
+                        contact_updates["whatsapp_number"] = field_values["contact_whatsapp_number"]
+                    if "contact_wechat_number" in field_values:
+                        contact_updates["wechat_number"] = field_values["contact_wechat_number"]
+                    await self.contact_repository.update(primary, **contact_updates)
+                else:
+                    await self.contact_repository.create(
+                        supplier_id=supplier_id,
+                        salutation=field_values.get("contact_salutation"),
+                        person_name=new_name,
+                        designation=field_values.get("contact_designation"),
+                        handling_territory=None,
+                        country_id=country_id,
+                        calling_number=field_values.get("contact_calling_number"),
+                        whatsapp_number=field_values.get("contact_whatsapp_number"),
+                        wechat_number=field_values.get("contact_wechat_number"),
+                        email=None,
+                        is_primary=True,
+                    )
+            elif "contact_full_name" in field_values and not new_name:
+                # User explicitly cleared the primary contact name from the main form
+                if primary is not None:
+                    await self.contact_repository.delete(primary)
+            elif primary is not None:
+                contact_updates = {}
+                if "contact_salutation" in field_values:
+                    contact_updates["salutation"] = field_values["contact_salutation"]
+                if "contact_designation" in field_values:
+                    contact_updates["designation"] = field_values["contact_designation"]
+                if "contact_calling_number" in field_values:
+                    contact_updates["calling_number"] = field_values["contact_calling_number"]
+                if "contact_whatsapp_number" in field_values:
+                    contact_updates["whatsapp_number"] = field_values["contact_whatsapp_number"]
+                if "contact_wechat_number" in field_values:
+                    contact_updates["wechat_number"] = field_values["contact_wechat_number"]
+                if contact_updates:
+                    await self.contact_repository.update(primary, **contact_updates)
 
         await self._invalidate_cache()
         # Same store-on-write hook as Products.update -- Suppliers is a

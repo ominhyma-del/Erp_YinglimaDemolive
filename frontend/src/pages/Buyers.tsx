@@ -2804,12 +2804,38 @@ export function BuyersPage() {
                                 {c.designation || "No Designation"}
                               </div>
                             </td>
-                            <td style={{ padding: "12px 16px" }}>
-                              <div style={{ color: "#334155", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                <span>📞</span> {c.calling_number || "—"}
-                              </div>
-                              <div style={{ color: "#334155", marginTop: "4px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                                <WhatsAppIcon size={14} /> {c.whatsapp_number || "—"}
+                            <td style={{ padding: "12px 16px", verticalAlign: "middle" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <div style={{ color: "#334155", display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span>📞</span>
+                                  {c.calling_number ? (
+                                    <a
+                                      href={`tel:${c.calling_number}`}
+                                      style={{ color: "#1e293b", textDecoration: "none", fontWeight: 500 }}
+                                      title="Call"
+                                    >
+                                      {c.calling_number}
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: "#94a3b8" }}>—</span>
+                                  )}
+                                </div>
+                                <div style={{ color: "#334155", display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <WhatsAppIcon size={14} />
+                                  {c.whatsapp_number ? (
+                                    <a
+                                      href={`https://wa.me/${c.whatsapp_number.replace(/[^0-9]/g, "")}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      style={{ color: "#16a34a", textDecoration: "none", fontWeight: 500 }}
+                                      title="Open WhatsApp"
+                                    >
+                                      {c.whatsapp_number}
+                                    </a>
+                                  ) : (
+                                    <span style={{ color: "#94a3b8" }}>—</span>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             <td style={{ padding: "12px 16px" }}>
@@ -3908,7 +3934,7 @@ export function BuyersPage() {
                 : undefined
             }
             editLabel="✏️ Edit Buyer"
-            cardStyle={{ maxWidth: "720px", width: "100%" }}
+            cardStyle={{ maxWidth: "860px", width: "100%" }}
           >
             <div style={{ display: "flex", flexDirection: "column", gap: "18px", paddingBottom: "24px" }}>
               {/* CARD 1: Company Profile & Classification */}
@@ -3923,16 +3949,14 @@ export function BuyersPage() {
                     { label: "Tax ID (TIN / GST)", value: detailBuyer.tax_id_number || "—" },
                     { label: "Country", value: countries.items.find((c) => c.id === detailBuyer.country_id)?.name || "—" },
                     { label: "State / Province", value: states.items.find((s) => s.id === detailBuyer.state_id)?.name || "—" },
-                    { label: "City", value: detailBuyer.city || "—" },
+                    { label: "City", value: detailBuyer.city || "—", fullWidth: true },
                     {
                       label: "Product Categories",
-                      value: renderChips(detailBuyer.category_ids, categories.items, "Product Categories", categoryNamesFallback.items, "🏷️"),
-                      fullWidth: true,
+                      value: renderChips(detailBuyer.category_ids, categories.items, "Product Categories", categoryNamesFallback.items, "🏷️", "240px"),
                     },
                     {
                       label: "Product Sub-Categories",
-                      value: renderChips(detailBuyer.sub_category_ids, subCategories.items, "Product Sub-Categories", subCategoryNamesFallback.items, "📂"),
-                      fullWidth: true,
+                      value: renderChips(detailBuyer.sub_category_ids, subCategories.items, "Product Sub-Categories", subCategoryNamesFallback.items, "📂", "240px"),
                     },
                     { label: "Currently Buying From", value: detailBuyer.currently_buying_from || "—", fullWidth: true },
                     { label: "Product Range (Manufactured / Supplied)", value: detailBuyer.product_range || "—", fullWidth: true },
@@ -4058,8 +4082,10 @@ export function BuyersPage() {
                   📍 Location &amp; Postal Delivery Address
                 </h4>
                 <DetailFieldGrid
+                  columns={3}
                   fields={[
                     { label: "Country", value: countries.items.find((c) => c.id === detailBuyer.country_id)?.name || "—" },
+                    { label: "State / Province", value: states.items.find((s) => s.id === detailBuyer.state_id)?.name || "—" },
                     { label: "City", value: detailBuyer.city || "—" },
                     { label: "Full Postal Address", value: detailBuyer.address || "—", fullWidth: true },
                   ]}

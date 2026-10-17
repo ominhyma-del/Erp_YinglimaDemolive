@@ -161,3 +161,35 @@ class TestBuyerContactSync:
         refreshed = await service.get_by_id_or_raise(buyer.id)
         assert refreshed.contact_full_name == "Updated Primary Name"
         assert refreshed.contact_calling_number == "+256 708888888"
+
+    async def test_clear_primary_contact_clears_buyer_profile_and_deletes_primary(self, db_session, existing_country):
+        service = _make_service(db_session)
+        company_name = f"ClearSync Co {uuid.uuid4().hex[:6]}"
+        buyer = await service.create(
+            company_name=company_name,
+            country_id=existing_country.id,
+            contact_full_name="To Be Cleared",
+            contact_calling_number="+256 703333333",
+            contact_designation="Manager",
+        )
+        primary = await service.contact_repository.get_primary_contact(buyer.id)
+        assert primary is not None
+        assert primary.person_name == "To Be Cleared"
+
+        # Update buyer by clearing contact info
+        await service.update(
+            buyer.id,
+            contact_full_name=None,
+            contact_calling_number=None,
+            contact_designation=None,
+        )
+
+        refreshed = await service.get_by_id_or_raise(buyer.id)
+        assert refreshed.contact_full_name is None
+        assert refreshed.contact_calling_number is None
+        assert refreshed.contact_designation is None
+
+        # Mirrored primary contact should be deleted
+        primary_after = await service.contact_repository.get_primary_contact(buyer.id)
+        assert primary_after is None
+

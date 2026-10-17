@@ -419,7 +419,7 @@ export function ProductsPage() {
   const hsnCodes = useLookup<Hsn>("/masters/hsn", 250, true);
   const uoms = useLookup<Uom>("/masters/uom", 250, true);
   const organizations = useLookup<{ id: string; name: string; branches?: Array<{ id: string; name: string; code_prefix?: string; city?: string }> }>("/masters/company-list", 250, true);
-  const [suppliersList, setSuppliersList] = useState<{ id: string; company_name: string; supplier_type?: string }[]>([]);
+  const [suppliersList, setSuppliersList] = useState<{ id: string; company_name: string; supplier_type?: string; brand_description?: string }[]>([]);
   const [catalogProducts, setCatalogProducts] = useState<Product[]>([]);
   const [exactNameDuplicate, setExactNameDuplicate] = useState<string | null>(null);
   const [exactCodeDuplicate, setExactCodeDuplicate] = useState<{ code: string; name: string } | null>(null);
@@ -433,7 +433,7 @@ export function ProductsPage() {
     let active = true;
     (async () => {
       try {
-        const { data } = await apiGet<{ id: string; company_name: string }[]>("/suppliers/lookup");
+        const { data } = await apiGet<{ id: string; company_name: string; brand_description?: string }[]>("/suppliers/lookup");
         if (active && Array.isArray(data) && data.length > 0) {
           setSuppliersList(data);
           return;
@@ -442,7 +442,7 @@ export function ProductsPage() {
         /* fallback */
       }
       try {
-        const { data } = await apiGet<{ id: string; company_name: string }[]>("/inventory/product-prices/suppliers-lookup");
+        const { data } = await apiGet<{ id: string; company_name: string; brand_description?: string }[]>("/inventory/product-prices/suppliers-lookup");
         if (active && Array.isArray(data) && data.length > 0) {
           setSuppliersList(data);
           return;
@@ -700,7 +700,7 @@ export function ProductsPage() {
         "Product Code",
         "Brand",
         "Sub Category",
-        "Primary Supplier",
+        "Supplier Brand",
         "HSN Code",
         "UOM",
         "Organization",
@@ -801,13 +801,34 @@ export function ProductsPage() {
           },
         },
         {
-          header: "Primary Supplier",
-          sortValue: (p) => p.supplier_name || suppliersList.find((x) => x.id === p.supplier_id)?.company_name || "",
+          header: "Supplier Brand",
+          sortValue: (p) => {
+            const s = suppliersList.find((x) => x.id === p.supplier_id);
+            return s?.brand_description?.trim() || p.supplier_name || s?.company_name || "";
+          },
           render: (p) => {
-            const sName = p.supplier_name || suppliersList.find((x) => x.id === p.supplier_id)?.company_name;
-            return sName ? (
-              <span className="cell-truncate" title={sName} style={{ maxWidth: "160px", color: "#0f172a", fontWeight: 500 }}>
-                {sName}
+            const s = suppliersList.find((x) => x.id === p.supplier_id);
+            const brand = s?.brand_description?.trim();
+            const comp = s?.company_name?.trim();
+            if (brand) {
+              const showComp = Boolean(comp && comp.toLowerCase() !== brand.toLowerCase());
+              return (
+                <span
+                  className="cell-truncate"
+                  title={showComp ? `${brand} (${comp})` : brand}
+                  style={{ maxWidth: "190px", display: "inline-block" }}
+                >
+                  <strong style={{ fontWeight: 700, color: "#0f172a" }}>{brand}</strong>
+                  {showComp && (
+                    <span style={{ color: "#64748b", marginLeft: "4px", fontSize: "12px" }}>({comp})</span>
+                  )}
+                </span>
+              );
+            }
+            const fallback = p.supplier_name || comp;
+            return fallback ? (
+              <span className="cell-truncate" title={fallback} style={{ maxWidth: "160px", color: "#334155", fontWeight: 400 }}>
+                {fallback}
               </span>
             ) : (
               <span style={{ color: "#94a3b8" }}>—</span>
@@ -1207,16 +1228,33 @@ export function ProductsPage() {
               </SelectField>
               <SelectField
                 id="supplier_id"
-                label="Primary Supplier"
+                label="Supplier Brand"
                 value={f.supplier_id}
                 onChange={(v) => set("supplier_id", v)}
               >
-                <option value="">-- Select Primary Supplier (Optional) --</option>
-                {suppliersList.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.company_name}
-                  </option>
-                ))}
+                <option value="">-- Select Supplier Brand (Optional) --</option>
+                {suppliersList.map((s) => {
+                  const brand = s.brand_description?.trim();
+                  const comp = s.company_name?.trim();
+                  const hasBrand = Boolean(brand);
+                  const showCompInParens = Boolean(hasBrand && comp && comp.toLowerCase() !== brand!.toLowerCase());
+                  const searchLabel = hasBrand ? (showCompInParens ? `${brand} (${comp})` : brand!) : (comp || "");
+
+                  return (
+                    <option key={s.id} value={s.id} label={searchLabel}>
+                      {hasBrand ? (
+                        <span>
+                          <strong style={{ fontWeight: 700, color: "#0f172a" }}>{brand}</strong>
+                          {showCompInParens && (
+                            <span style={{ color: "#64748b", marginLeft: "5px" }}>({comp})</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span>{comp}</span>
+                      )}
+                    </option>
+                  );
+                })}
               </SelectField>
 
               {/* Row 2: HSN Code, Refund VAT %, Organization (spans 2 columns) */}
@@ -2098,8 +2136,24 @@ export function ProductsPage() {
               <DetailFieldGrid
                 fields={[
                   {
-                    label: "Primary Supplier",
-                    value: p.supplier_name || suppliersList.find((s) => s.id === p.supplier_id)?.company_name || "—",
+                    label: "Supplier Brand",
+                    value: (() => {
+                      const s = suppliersList.find((x) => x.id === p.supplier_id);
+                      const brand = s?.brand_description?.trim();
+                      const comp = s?.company_name?.trim();
+                      if (brand) {
+                        const showComp = Boolean(comp && comp.toLowerCase() !== brand.toLowerCase());
+                        return (
+                          <span>
+                            <strong style={{ fontWeight: 700, color: "#0f172a" }}>{brand}</strong>
+                            {showComp && (
+                              <span style={{ color: "#64748b", marginLeft: "5px" }}>({comp})</span>
+                            )}
+                          </span>
+                        );
+                      }
+                      return p.supplier_name || comp || "—";
+                    })(),
                   },
                   {
                     label: "HSN Code",

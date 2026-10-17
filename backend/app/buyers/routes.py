@@ -198,7 +198,7 @@ async def _to_buyer_read(service: BuyerService, buyer) -> dict:
         "emails": [e.email for e in buyer.emails],
         "category_ids": [link.category_id for link in buyer.category_links],
         "sub_category_ids": [link.sub_category_id for link in buyer.sub_category_links],
-        "contacts": [BuyerContactRead.model_validate(c) for c in buyer.contacts],
+        "contacts": [BuyerContactRead.model_validate(c) for c in buyer.contacts if getattr(c, "deleted_at", None) is None],
     }
     return BuyerRead.model_validate(payload).model_dump(mode="json")
 
@@ -413,9 +413,9 @@ async def update_buyer(
     dispatcher: EventDispatcher = Depends(get_event_dispatcher),
 ) -> dict:
     """Update an existing buyer profile."""
-    buyer = await service.update(buyer_id, **payload.model_dump())
+    buyer = await service.update(buyer_id, **payload.model_dump(exclude_unset=True))
     data = await _to_buyer_read(service, buyer)
-    changes = payload.model_dump(exclude_none=True, exclude={"version"}, mode="json")
+    changes = payload.model_dump(exclude_unset=True, exclude={"version"}, mode="json")
     await _record_action(
         audit_service=audit_service,
         request=request,

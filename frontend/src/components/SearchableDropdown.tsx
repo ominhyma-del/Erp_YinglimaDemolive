@@ -26,6 +26,7 @@ export interface DropdownOption {
   label: string;
   sublabel?: string;
   group?: string;
+  renderLabel?: () => React.ReactNode;
 }
 
 export const isUUID = (s: string) =>
@@ -57,6 +58,7 @@ export interface SearchableDropdownProps extends SharedProps {
   disabled?: boolean;
   onCreateNew?: (typedText: string) => void;
   createNewLabel?: (typedText: string) => string;
+  inputStyle?: React.CSSProperties;
 }
 
 export function SearchableDropdown({
@@ -72,6 +74,7 @@ export function SearchableDropdown({
   disabled = false,
   onCreateNew,
   createNewLabel,
+  inputStyle,
 }: SearchableDropdownProps) {
   const [inputValue, setInputValue] = useState("");
   const [label, setLabel] = useState("");
@@ -294,6 +297,8 @@ export function SearchableDropdown({
           border: hasError ? "1.5px solid #ef4444" : undefined,
           boxShadow: hasError ? "0 0 0 3px rgba(239, 68, 68, 0.15)" : undefined,
           paddingRight: !disabled && inputValue ? "56px" : "30px",
+          ...inputStyle,
+          ...(hasError ? { border: "1.5px solid #ef4444", boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.15)" } : {}),
           ...(disabled
             ? {
                 background: "#f8fafc",
@@ -465,7 +470,7 @@ export function SearchableDropdown({
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span>{opt.label}</span>
+                          <span>{opt.renderLabel ? opt.renderLabel() : opt.label}</span>
                           {opt.sublabel && (
                             <span style={{ fontSize: "11px", color: "#64748b", background: "#f1f5f9", padding: "1px 6px", borderRadius: "4px" }}>
                               {opt.sublabel}
@@ -529,7 +534,7 @@ export function SearchableDropdown({
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>{opt.label}</span>
+                            <span>{opt.renderLabel ? opt.renderLabel() : opt.label}</span>
                             {opt.sublabel && (
                               <span style={{ fontSize: "11px", color: "#64748b", background: "#f1f5f9", padding: "1px 6px", borderRadius: "4px" }}>
                                 {opt.sublabel}
