@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
 import { apiDelete, apiGet, downloadExport, errorMessage } from "@/lib/api";
 import { useLookup } from "@/lib/lookups";
@@ -18,6 +18,7 @@ import { SaleProcessDetailModal } from "./SaleProcessDetailModal";
 
 export function SaleProcessListPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
 
   const [orders, setOrders] = useState<SaleOrder[]>([]);
@@ -53,6 +54,18 @@ export function SaleProcessListPage() {
   const [actionMenuPos, setActionMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+
+  // Sync deep link query params (from notifications or external links)
+  useEffect(() => {
+    const s = searchParams.get("search");
+    const id = searchParams.get("id");
+    if (s) {
+      setSearch(s);
+    }
+    if (id) {
+      setViewOrderId(id);
+    }
+  }, [searchParams]);
 
   // Close kebab action menu on outside click or scroll
   useEffect(() => {
@@ -286,35 +299,39 @@ export function SaleProcessListPage() {
           </div>
 
           <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            {/* Filter Toggle */}
+            {/* Filter Toggle (Matching Products Master) */}
             <button
               type="button"
+              className="btn"
               onClick={() => setFilterOpen((prev) => !prev)}
+              title="Toggle Filter Options"
               style={{
-                background: filterOpen || activeFiltersCount > 0 ? "#0061f2" : "#ffffff",
-                color: filterOpen || activeFiltersCount > 0 ? "#ffffff" : "#334155",
-                border: "1px solid #cbd5e1",
-                padding: "8px 14px",
+                background: filterOpen ? "#0061f2" : "#475569",
+                color: "#ffffff",
+                padding: "8px 12px",
                 borderRadius: "6px",
-                fontWeight: 600,
-                fontSize: "13px",
+                border: "none",
                 display: "inline-flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "6px",
                 cursor: "pointer",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
               }}
             >
-              <span>🔍 Filters</span>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+              </svg>
               {activeFiltersCount > 0 && (
                 <span
                   style={{
-                    background: filterOpen ? "#ffffff" : "#0061f2",
-                    color: filterOpen ? "#0061f2" : "#ffffff",
+                    background: "#ef4444",
+                    color: "#ffffff",
                     fontSize: "10px",
                     fontWeight: 800,
                     borderRadius: "10px",
-                    padding: "1px 6px",
+                    padding: "1px 5px",
+                    lineHeight: 1,
                   }}
                 >
                   {activeFiltersCount}
@@ -322,33 +339,10 @@ export function SaleProcessListPage() {
               )}
             </button>
 
-            {/* Export Button */}
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              style={{
-                background: "#ffffff",
-                color: "#1e293b",
-                border: "1px solid #cbd5e1",
-                padding: "8px 14px",
-                borderRadius: "6px",
-                fontWeight: 600,
-                fontSize: "13px",
-                cursor: exporting ? "wait" : "pointer",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-              }}
-            >
-              <span>📊</span>
-              <span>{exporting ? "Exporting..." : "Export"}</span>
-            </button>
-
             {/* Create Sale Order Button */}
             <Link
               to="/sale/process/new"
+              className="btn btn-add-new"
               style={{
                 background: "#0061f2",
                 color: "#ffffff",
@@ -364,9 +358,33 @@ export function SaleProcessListPage() {
                 boxShadow: "0 2px 4px rgba(0,97,242,0.25)",
               }}
             >
-              <span>+</span>
-              <span>Create Sale Process</span>
+              <span>+ Create Sale Process</span>
             </Link>
+
+            {/* Export Button (Matching Products Master Imp / Exp style) */}
+            <button
+              type="button"
+              className="btn btn-imp-exp"
+              onClick={handleExport}
+              disabled={exporting}
+              title="Export Sale Process to Excel"
+              style={{
+                background: "#f59e0b",
+                color: "#ffffff",
+                border: "none",
+                padding: "8px 16px",
+                borderRadius: "6px",
+                fontWeight: 700,
+                fontSize: "13px",
+                cursor: exporting ? "wait" : "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+              }}
+            >
+              <span>{exporting ? "Exporting..." : "Export"}</span>
+            </button>
           </div>
         </div>
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from app.api.v1.health import router as health_router
+from app.api.v1.internal_sessions import router as internal_sessions_router
 from app.api.v1.internal_users import router as internal_users_router
 from app.audit.routes import router as audit_router
 from app.auth.routes import router as auth_router
@@ -121,6 +122,15 @@ api_router.include_router(local_purchases_router)
 from app.sales.routes import router as sales_router
 api_router.include_router(sales_router)
 
+# Stock Movement: Inward & Outward Register, Live Stock Balance
+from app.stock.routes import router as stock_router
+api_router.include_router(stock_router)
+
+
+# Notifications & Alert Rules
+from app.notifications.routes import router as notifications_router
+api_router.include_router(notifications_router)
+
 # Phase 1 (Live Events): generic real-time WebSocket infrastructure --
 # see app/events/ and doc/EVENTS_ARCHITECTURE.md. Not module-specific;
 # any future module's routes/services publish through this without
@@ -128,6 +138,7 @@ api_router.include_router(sales_router)
 api_router.include_router(events_router)
 api_router.include_router(federation_router)
 api_router.include_router(internal_users_router)
+api_router.include_router(internal_sessions_router)
 api_router.include_router(integration_router)
 
 from app.durable_events.routes import router as durable_events_router  # noqa: E402

@@ -251,6 +251,21 @@ class LocalPurchaseService:
             db_items.append(db_item)
 
         created = await self.repo.create_purchase(purchase, db_items)
+        try:
+            from app.notifications.service import NotificationService
+            inv_str = created.invoice_no or "Bill"
+            supp_str = created.supplier_name or "Supplier"
+            val_str = f"{created.currency or 'RMB'} {created.invoice_total_value:,.2f}"
+            await NotificationService.dispatch_event(
+                self.session,
+                event_key="local_purchase_created",
+                title=f"Local Purchase Recorded: {inv_str} ({supp_str})",
+                message=f"Purchase bill {inv_str} recorded for {supp_str} total {val_str}.",
+                link=f"/purchase/local?search={created.invoice_no or ''}&id={created.id}",
+                sender_id=created_by_id,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to dispatch local_purchase_created notification: {e}")
         return created
 
     async def update_purchase(

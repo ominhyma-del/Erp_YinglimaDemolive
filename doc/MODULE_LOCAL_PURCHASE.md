@@ -50,6 +50,12 @@ The **Local Purchase** module allows China operations to record domestic procure
 3. **Bill Extraction Auto-Fill Integration:**
    - When the user clicks **⚡ Extract Bill Data**, any supplier identified by the AI extractor automatically matches against the supplier directory and pre-populates the type-ahead search bar.
 
+### Release 2026-10-19: Automated Event Notifications
+1. **Purchase Order Notification Hook (`local_purchase_created`):**
+   - Automatically fires the `local_purchase_created` event when a domestic purchase order is successfully saved.
+   - Dispatches in-app notifications and email alerts to configured procurement roles and managers.
+   - Topbar alert includes PO number, supplier name, and total amount with direct link to the purchase order.
+
 ---
 
 ## 4. What Needs to Be Verified (Testing Checklist)

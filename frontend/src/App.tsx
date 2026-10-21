@@ -54,14 +54,17 @@ const pageLoaders = {
   Products: () => import("@/pages/masters/Products").then((m) => ({ default: m.ProductsPage })),
   ProductPrices: () => import("@/pages/ProductPrices").then((m) => ({ default: m.ProductPricesPage })),
   ProductGallery: () => import("@/pages/ProductGallery").then((m) => ({ default: m.ProductGalleryPage })),
+  StockMovements: () => import("@/pages/inventory/StockMovements").then((m) => ({ default: m.StockMovementsPage })),
   LocalPurchases: () => import("@/pages/purchases/LocalPurchases").then((m) => ({ default: m.LocalPurchasesPage })),
   LocalPurchaseForm: () => import("@/pages/purchases/LocalPurchaseForm").then((m) => ({ default: m.LocalPurchaseFormPage })),
   SaleProcessList: () => import("@/pages/sales/SaleProcessList").then((m) => ({ default: m.SaleProcessListPage })),
   SaleProcessForm: () => import("@/pages/sales/SaleProcessForm").then((m) => ({ default: m.SaleProcessFormPage })),
   Trash: () => import("@/pages/Trash").then((m) => ({ default: m.TrashPage })),
   PublicSupplierQuote: () => import("@/pages/PublicSupplierQuotePage"),
+  NotificationSettings: () => import("@/pages/NotificationSettings").then((m) => ({ default: m.NotificationSettings })),
 };
 
+const NotificationSettingsPage = lazy(pageLoaders.NotificationSettings);
 const OrganizationPage = lazy(pageLoaders.Organization);
 const AuditPage = lazy(pageLoaders.Audit);
 const UsersPage = lazy(pageLoaders.Users);
@@ -88,6 +91,7 @@ const SubCategoriesPage = lazy(pageLoaders.SubCategories);
 const ProductsPage = lazy(pageLoaders.Products);
 const ProductPricesPage = lazy(pageLoaders.ProductPrices);
 const ProductGalleryPage = lazy(pageLoaders.ProductGallery);
+const StockMovementsPage = lazy(pageLoaders.StockMovements);
 const LocalPurchasesPage = lazy(pageLoaders.LocalPurchases);
 const LocalPurchaseFormPage = lazy(pageLoaders.LocalPurchaseForm);
 const SaleProcessListPage = lazy(pageLoaders.SaleProcessList);
@@ -183,6 +187,7 @@ export function App() {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/403" element={<ForbiddenPage />} />
             <Route path="/organization" element={<OrganizationPage />} />
+            <Route path="/notification-settings" element={<NotificationSettingsPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/trash" element={<TrashPage />} />
             <Route path="/profile" element={<ProfilePage />} />
@@ -197,16 +202,25 @@ export function App() {
             <Route path="/inquiries" element={<InquiriesPage />} />
             <Route path="/planning" element={<PlanningPage />} />
 
+            {/* Inventory & Stock Movement */}
+            <Route path="/inventory/stock-movements" element={<StockMovementsPage />} />
+            <Route path="/stock" element={<Navigate to="/inventory/stock-movements" replace />} />
+            <Route path="/stock-movements" element={<Navigate to="/inventory/stock-movements" replace />} />
+
             {/* Purchases */}
             <Route path="/purchase/local" element={<LocalPurchasesPage />} />
             <Route path="/purchase/local/new" element={<LocalPurchaseFormPage />} />
             <Route path="/purchase/local/:id/edit" element={<LocalPurchaseFormPage />} />
             <Route path="/local-purchase" element={<Navigate to="/purchase/local" replace />} />
+            <Route path="/local-purchases" element={<Navigate to="/purchase/local" replace />} />
 
             {/* Sales */}
             <Route path="/sale/process" element={<SaleProcessListPage />} />
             <Route path="/sale/process/new" element={<SaleProcessFormPage />} />
             <Route path="/sale/process/:id/edit" element={<SaleProcessFormPage />} />
+            <Route path="/sales/orders/:id" element={<Navigate to="/sale/process" replace />} />
+            <Route path="/sales/orders" element={<Navigate to="/sale/process" replace />} />
+            <Route path="/sales" element={<Navigate to="/sale/process" replace />} />
 
             <Route path="/masters/company-list" element={<CompanyListPage />} />
             <Route path="/masters/countries" element={<CountriesPage />} />
