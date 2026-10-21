@@ -67,20 +67,28 @@ Step 2: Planning Sheet / Branch (e.g. Inhyma Mumbai, Inhyma Ahmedabad, Darsh Imp
 Step 3: Planning Consignment Column (Filtered to ONLY columns in the chosen sheet)
 ```
 
-1. **Customer / Entity Selector:**
+1. **Customer / Entity Selector & Strict Lockout Gating:**
    - Unified combobox with two distinct grouped sections:
      - `🏢 INTERNAL ORGANIZATIONS`: Lists all registered master companies (e.g. Inhyma, Darsh Impex, FNB Solution, One Stop, Test Group, Yinglima).
      - `👤 BUYERS`: Lists all registered buyer entities (e.g. Om Packaging, Prathamesh Packaging, etc.).
    - Full instant search filter.
+   - **Strict Lockout Rule:** Unless a Customer/Entity is chosen, both the **Planning Sheet / Branch** and **Planning Consignment Column** dropdowns remain strictly **disabled, locked, and closed** with a `🔒 Locked / Select Customer first` indicator.
+   - **Complete Cascading Reset on Customer Clear/Change:** Clearing (`✕`) or changing the Customer immediately:
+     - Re-locks the Planning Sheet and Consignment Column selectors.
+     - Resets selected Sheet and Consignment IDs to blank.
+     - **Clears all planned line items (`items = []`)** from the table so no orphaned products linger without an associated customer.
+     - Resets Container Freight CBM (`totalContainerCbm = 0`) and consignment banner information.
 
-2. **Planning Sheet / Branch Selector (New Field):**
+2. **Planning Sheet / Branch Selector:**
    - Automatically filters available planning sheets to only those belonging to the selected organization or buyer.
    - For example, selecting `Inhyma` filters the sheets dropdown to `Inhyma Mumbai`, `Inhyma Ahmedabad`, `Inhyma  Indore`, `inhyma chennai`.
    - Selecting `Om Packaging` filters to `Om Packaging - Mulund`.
+   - **Cascading Reset on Sheet Clear/Change:** Clearing or changing the Sheet immediately clears any active Consignment Column, resets Container CBM to 0, and wipes the table line items.
 
-3. **Planning Consignment Column Selector:**
+3. **Planning Consignment Column Selector & Immediate Data Loading:**
    - Displays **only** the consignment columns from the selected planning sheet (e.g., `Mum 48`, `Mum 49`, `GJ14`, etc.).
-   - Selecting a consignment column immediately auto-loads all planned items with quantity > 0, unit rates, CBM, and remarks.
+   - **Immediate Data Loading on Column Change:** Selecting or changing a consignment column immediately calls the extraction engine, wipes any previous column's products, and populates the table with the items, quantities, and CBM of the newly selected column.
+   - **Clear Column Action:** Clearing the consignment column (`✕`) automatically wipes the line items and resets container CBM.
 
 4. **Nullable Buyer ID & Organization Transfer Support:**
    - `sales_orders.buyer_id` is nullable (migration `b3c4d5e6f7a8`), enabling export sales and internal consignment transfers to internal organizations/sheets without constraint violations.

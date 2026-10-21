@@ -312,9 +312,11 @@ export function SaleProcessFormPage() {
   }, [selectedSheetId, sheets, buyerId, selectedEntityId]);
 
   // Filter available sheets based on selected entity (Organization or Buyer)
+  // Filter available sheets based on selected entity (Organization or Buyer)
+  // Strict Gating: If no Customer/Entity is selected, no sheets are available (locked)
   const availableSheets = useMemo(() => {
     if (!selectedEntityType || !selectedEntityId) {
-      return sheets;
+      return [];
     }
     if (selectedEntityType === "org") {
       const org = orgLookup.items?.find((o) => o.id === selectedEntityId);
@@ -334,7 +336,7 @@ export function SaleProcessFormPage() {
         return false;
       });
     }
-    return sheets;
+    return [];
   }, [sheets, selectedEntityType, selectedEntityId, orgLookup.items, buyerLookup.items]);
 
   const filteredSheets = useMemo(() => {
@@ -359,12 +361,13 @@ export function SaleProcessFormPage() {
     });
   }, [buyerLookup.items, entitySearch]);
 
-  // Filtered consignments for the combobox
+  // Filtered consignments for the combobox:
+  // Strict Gating: only available when Customer AND Sheet are selected
   const filteredConsignments = useMemo(() => {
-    let list = [...consignments];
-    if (selectedSheetId) {
-      list = list.filter((c) => c.sheet_id === selectedSheetId);
+    if (!selectedEntityId || !selectedSheetId) {
+      return [];
     }
+    let list = consignments.filter((c) => c.sheet_id === selectedSheetId);
     if (consignmentSearch.trim()) {
       const q = consignmentSearch.trim().toLowerCase();
       list = list.filter((c) => {
@@ -375,10 +378,67 @@ export function SaleProcessFormPage() {
       });
     }
     return list;
-  }, [consignments, consignmentSearch, selectedSheetId]);
+  }, [consignments, consignmentSearch, selectedEntityId, selectedSheetId]);
+
+  // Complete Cascade Reset: Clear Customer and all dependent data & line items
+  const handleClearCustomer = () => {
+    setSelectedEntityType("");
+    setSelectedEntityId("");
+    setBuyerId("");
+    setBuyerName("");
+    setBuyerBranchId("");
+    setBuyerBranchName("");
+    setSelectedSheetId("");
+    setSelectedSheetName("");
+    setSelectedColumnId("");
+    setSelectedConsignmentCode("");
+    setConsignmentLoadedInfo(null);
+    setTotalContainerCbm(0);
+    setItems([]);
+    setSheetOpen(false);
+    setConsignmentOpen(false);
+    setEntityOpen(false);
+    setEntitySearch("");
+  };
+
+  // Complete Cascade Reset: Clear Sheet and dependent consignment & line items
+  const handleClearSheet = () => {
+    setSelectedSheetId("");
+    setSelectedSheetName("");
+    setSelectedColumnId("");
+    setSelectedConsignmentCode("");
+    setConsignmentLoadedInfo(null);
+    setTotalContainerCbm(0);
+    setItems([]);
+    setSheetOpen(false);
+    setConsignmentOpen(false);
+    setSheetSearch("");
+  };
+
+  // Complete Cascade Reset: Clear Consignment Column and dependent line items
+  const handleClearConsignment = () => {
+    setSelectedColumnId("");
+    setSelectedConsignmentCode("");
+    setConsignmentLoadedInfo(null);
+    setTotalContainerCbm(0);
+    setItems([]);
+    setConsignmentOpen(false);
+    setConsignmentSearch("");
+  };
 
   // Handle entity change (Organization or Buyer)
   const handleSelectEntity = (type: "org" | "buyer", entId: string, entName: string) => {
+    if (entId !== selectedEntityId) {
+      // Clear previous customer's sheet, consignment, and planned items
+      setSelectedSheetId("");
+      setSelectedSheetName("");
+      setSelectedColumnId("");
+      setSelectedConsignmentCode("");
+      setConsignmentLoadedInfo(null);
+      setTotalContainerCbm(0);
+      setItems([]);
+    }
+
     setSelectedEntityType(type);
     setSelectedEntityId(entId);
     setBuyerName(entName);
@@ -403,18 +463,21 @@ export function SaleProcessFormPage() {
       setBuyerBranchName("");
     }
 
-    // Reset sheet and consignment column
-    setSelectedSheetId("");
-    setSelectedSheetName("");
-    setSelectedColumnId("");
-    setSelectedConsignmentCode("");
-    setConsignmentLoadedInfo(null);
     setEntityOpen(false);
     setEntitySearch("");
   };
 
   // Handle sheet change
   const handleSelectSheet = (sheet: PlanningSheet) => {
+    if (sheet.id !== selectedSheetId) {
+      // Clear previous sheet's consignment and planned items
+      setSelectedColumnId("");
+      setSelectedConsignmentCode("");
+      setConsignmentLoadedInfo(null);
+      setTotalContainerCbm(0);
+      setItems([]);
+    }
+
     setSelectedSheetId(sheet.id);
     setSelectedSheetName(sheet.name);
 
@@ -452,10 +515,6 @@ export function SaleProcessFormPage() {
       setBuyerBranchName(sheet.name);
     }
 
-    // Reset consignment column selection since sheet changed
-    setSelectedColumnId("");
-    setSelectedConsignmentCode("");
-    setConsignmentLoadedInfo(null);
     setSheetOpen(false);
     setSheetSearch("");
   };
@@ -472,7 +531,7 @@ export function SaleProcessFormPage() {
     setConsignmentOpen(false);
     setConsignmentSearch("");
 
-    // Auto-load items immediately on selection
+    // Auto-load items immediately on selection for the newly chosen consignment column
     handleExtractConsignment(col.column_id);
   };
 
@@ -493,8 +552,11 @@ export function SaleProcessFormPage() {
       if (res.data) {
         const data = res.data;
         if (data.items.length === 0) {
+          setItems([]);
+          setTotalContainerCbm(0);
+          setConsignmentLoadedInfo(null);
           toast(
-            `No products with planned quantity > 0 found in consignment ${data.consignment_code}.`,
+            `No products with planned quantity > 0 found in consignment ${data.consignment_code}. Table reset.`,
             "warning"
           );
           return;
@@ -1283,15 +1345,7 @@ export function SaleProcessFormPage() {
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedEntityType("");
-                          setSelectedEntityId("");
-                          setBuyerId("");
-                          setBuyerName("");
-                          setSelectedSheetId("");
-                          setSelectedSheetName("");
-                          setSelectedColumnId("");
-                          setSelectedConsignmentCode("");
-                          setConsignmentLoadedInfo(null);
+                          handleClearCustomer();
                         }}
                         style={{ fontSize: "12px", color: "#94a3b8", padding: "2px 4px", cursor: "pointer" }}
                         title="Clear entity"
@@ -1344,17 +1398,7 @@ export function SaleProcessFormPage() {
                     <div style={{ maxHeight: "250px", overflowY: "auto" }}>
                       {/* Clear Option */}
                       <div
-                        onClick={() => {
-                          setSelectedEntityType("");
-                          setSelectedEntityId("");
-                          setBuyerId("");
-                          setBuyerName("");
-                          setSelectedSheetId("");
-                          setSelectedSheetName("");
-                          setSelectedColumnId("");
-                          setSelectedConsignmentCode("");
-                          setEntityOpen(false);
-                        }}
+                        onClick={() => handleClearCustomer()}
                         style={{ padding: "8px 12px", fontSize: "12px", color: "#94a3b8", cursor: "pointer", fontStyle: "italic" }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -1497,7 +1541,9 @@ export function SaleProcessFormPage() {
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
                     Planning Sheet / Branch
                   </label>
-                  {loadingSheets ? (
+                  {!selectedEntityId ? (
+                    <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>🔒 Locked</span>
+                  ) : loadingSheets ? (
                     <span style={{ fontSize: "11px", color: "#0284c7", fontWeight: 600 }}>Loading sheets...</span>
                   ) : (
                     <span style={{ fontSize: "11px", color: "#64748b" }}>
@@ -1509,7 +1555,9 @@ export function SaleProcessFormPage() {
                 {/* Trigger button */}
                 <button
                   type="button"
+                  disabled={!selectedEntityId}
                   onClick={() => {
+                    if (!selectedEntityId) return;
                     setSheetOpen((o) => !o);
                     setSheetSearch("");
                   }}
@@ -1517,33 +1565,38 @@ export function SaleProcessFormPage() {
                     width: "100%",
                     padding: "8px 10px",
                     borderRadius: "6px",
-                    border: selectedSheetId ? "1.5px solid #A7F3D0" : "1px solid #cbd5e1",
+                    border: !selectedEntityId
+                      ? "1px dashed #cbd5e1"
+                      : selectedSheetId
+                      ? "1.5px solid #A7F3D0"
+                      : "1px solid #cbd5e1",
                     fontSize: "13px",
-                    background: selectedSheetId ? "#ECFDF5" : "#fff",
+                    background: !selectedEntityId ? "#f8fafc" : selectedSheetId ? "#ECFDF5" : "#fff",
                     textAlign: "left",
-                    cursor: "pointer",
+                    cursor: !selectedEntityId ? "not-allowed" : "pointer",
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
-                    color: selectedSheetId ? "#065f46" : "#94a3b8",
+                    color: !selectedEntityId ? "#94a3b8" : selectedSheetId ? "#065f46" : "#475569",
                     fontWeight: selectedSheetId ? 600 : 400,
+                    opacity: !selectedEntityId ? 0.75 : 1,
                   }}
                 >
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {selectedSheetName ? `📄 ${selectedSheetName}` : (
-                      selectedEntityId ? `-- Select Sheet in ${buyerName} --` : "-- Select Sheet / Branch --"
+                    {!selectedEntityId ? (
+                      "🔒 Select Customer / Entity first"
+                    ) : selectedSheetName ? (
+                      `📄 ${selectedSheetName}`
+                    ) : (
+                      `-- Select Sheet in ${buyerName} --`
                     )}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    {selectedSheetId && (
+                    {selectedEntityId && selectedSheetId && (
                       <span
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedSheetId("");
-                          setSelectedSheetName("");
-                          setSelectedColumnId("");
-                          setSelectedConsignmentCode("");
-                          setConsignmentLoadedInfo(null);
+                          handleClearSheet();
                         }}
                         style={{ fontSize: "12px", color: "#94a3b8", padding: "2px 4px", cursor: "pointer" }}
                         title="Clear sheet"
@@ -1556,7 +1609,7 @@ export function SaleProcessFormPage() {
                 </button>
 
                 {/* Dropdown panel */}
-                {sheetOpen && (
+                {selectedEntityId && sheetOpen && (
                   <div
                     style={{
                       position: "absolute",
@@ -1597,13 +1650,7 @@ export function SaleProcessFormPage() {
                     {/* Options list */}
                     <div style={{ maxHeight: "250px", overflowY: "auto" }}>
                       <div
-                        onClick={() => {
-                          setSelectedSheetId("");
-                          setSelectedSheetName("");
-                          setSelectedColumnId("");
-                          setSelectedConsignmentCode("");
-                          setSheetOpen(false);
-                        }}
+                        onClick={() => handleClearSheet()}
                         style={{ padding: "8px 12px", fontSize: "12px", color: "#94a3b8", cursor: "pointer", fontStyle: "italic" }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = "#f1f5f9")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -1675,7 +1722,11 @@ export function SaleProcessFormPage() {
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
                     Planning Consignment Column
                   </label>
-                  {loadingConsignments ? (
+                  {!selectedEntityId ? (
+                    <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>🔒 Locked</span>
+                  ) : !selectedSheetId ? (
+                    <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>🔒 Select Sheet first</span>
+                  ) : loadingConsignments ? (
                     <span style={{ fontSize: "11px", color: "#0284c7", fontWeight: 600 }}>Loading...</span>
                   ) : (
                     <span style={{ fontSize: "11px", color: "#64748b" }}>{filteredConsignments.length} available</span>
@@ -1687,24 +1738,38 @@ export function SaleProcessFormPage() {
                   <div style={{ flex: 1, position: "relative" }}>
                     <button
                       type="button"
-                      onClick={() => setConsignmentOpen((prev) => !prev)}
+                      disabled={!selectedEntityId || !selectedSheetId}
+                      onClick={() => {
+                        if (!selectedEntityId || !selectedSheetId) return;
+                        setConsignmentOpen((prev) => !prev);
+                      }}
                       style={{
                         width: "100%",
                         padding: "8px 10px",
                         borderRadius: "6px",
-                        border: "1px solid #cbd5e1",
+                        border: (!selectedEntityId || !selectedSheetId)
+                          ? "1px dashed #cbd5e1"
+                          : selectedColumnId
+                          ? "1.5px solid #BAE6FD"
+                          : "1px solid #cbd5e1",
                         fontSize: "13px",
-                        background: "#fff",
+                        background: (!selectedEntityId || !selectedSheetId) ? "#f8fafc" : selectedColumnId ? "#F0F9FF" : "#fff",
                         textAlign: "left",
-                        cursor: "pointer",
+                        cursor: (!selectedEntityId || !selectedSheetId) ? "not-allowed" : "pointer",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        color: selectedColumnId ? "#0f172a" : "#94a3b8",
+                        color: (!selectedEntityId || !selectedSheetId) ? "#94a3b8" : selectedColumnId ? "#0369a1" : "#475569",
+                        fontWeight: selectedColumnId ? 600 : 400,
+                        opacity: (!selectedEntityId || !selectedSheetId) ? 0.75 : 1,
                       }}
                     >
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {selectedColumnId ? (() => {
+                        {!selectedEntityId ? (
+                          "🔒 Select Customer / Entity first"
+                        ) : !selectedSheetId ? (
+                          "🔒 Select Planning Sheet first"
+                        ) : selectedColumnId ? (() => {
                           const col = consignments.find((c) => c.column_id === selectedColumnId);
                           if (!col) return selectedConsignmentCode || "Consignment Selected";
                           return `${col.column_name} (${col.sheet_name} • ${col.item_count} items • ${col.total_quantity} pcs)`;
@@ -1713,12 +1778,11 @@ export function SaleProcessFormPage() {
                         )}
                       </span>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        {selectedColumnId && (
+                        {selectedEntityId && selectedSheetId && selectedColumnId && (
                           <span
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedColumnId("");
-                              setSelectedConsignmentCode("");
+                              handleClearConsignment();
                             }}
                             style={{
                               fontSize: "12px",
@@ -1737,7 +1801,7 @@ export function SaleProcessFormPage() {
                     </button>
 
                     {/* Dropdown Panel */}
-                    {consignmentOpen && (
+                    {selectedEntityId && selectedSheetId && consignmentOpen && (
                       <div
                         style={{
                           position: "absolute",
@@ -1829,20 +1893,20 @@ export function SaleProcessFormPage() {
 
                   <button
                     type="button"
-                    disabled={!selectedColumnId || extractingItems}
+                    disabled={!selectedEntityId || !selectedSheetId || !selectedColumnId || extractingItems}
                     onClick={() => handleExtractConsignment()}
                     style={{
                       padding: "8px 14px",
                       borderRadius: "6px",
-                      background: selectedColumnId ? "#0284c7" : "#e2e8f0",
-                      color: selectedColumnId ? "#ffffff" : "#94a3b8",
+                      background: (selectedEntityId && selectedSheetId && selectedColumnId && !extractingItems) ? "#0284c7" : "#e2e8f0",
+                      color: (selectedEntityId && selectedSheetId && selectedColumnId && !extractingItems) ? "#ffffff" : "#94a3b8",
                       border: "none",
                       fontSize: "12px",
                       fontWeight: 700,
-                      cursor: selectedColumnId ? "pointer" : "not-allowed",
+                      cursor: (selectedEntityId && selectedSheetId && selectedColumnId && !extractingItems) ? "pointer" : "not-allowed",
                       whiteSpace: "nowrap",
                       flexShrink: 0,
-                      boxShadow: selectedColumnId ? "0 1px 3px rgba(2,132,199,0.3)" : "none",
+                      boxShadow: (selectedEntityId && selectedSheetId && selectedColumnId && !extractingItems) ? "0 1px 3px rgba(2,132,199,0.3)" : "none",
                     }}
                     title="Load all products with quantity > 0 and remarks from this consignment column"
                   >

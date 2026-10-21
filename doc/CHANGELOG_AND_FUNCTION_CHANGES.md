@@ -3,6 +3,26 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-21] — Sale Process: Customer Gating Lockout & Cascading Reset of Planning Sheets, Consignments, and Line Items
+
+### 1. Customer Selection Gating & Padlock Lockout
+- **Strict Selector Gating:**
+  - Enforced strict dependency lockout in `SaleProcessForm.tsx`: both **Planning Sheet / Branch** and **Planning Consignment Column** remain **disabled, locked, and closed** until a Customer/Entity is chosen.
+  - Locked state displays a distinct dashed border, light gray background (`#f8fafc`), disabled cursor (`not-allowed`), and a `🔒 Select Customer / Entity first` prompt.
+  - Dropdown menus cannot be opened while locked, preventing accidental assignment of mismatched sheets or bypass of customer permissions.
+
+### 2. Complete Cascading Reset & Data Cleanliness
+- **Elimination of Orphaned Line Items:**
+  - When the Customer/Entity is cleared (`✕` or choosing `-- Select Entity --`) or changed to a different entity, the form automatically executes a complete cascading reset:
+    - Re-locks the Planning Sheet and Consignment Column selectors.
+    - Resets `selectedSheetId`, `selectedSheetName`, `selectedColumnId`, and `selectedConsignmentCode`.
+    - **Wipes all table line items (`items = []`)** so products from a previously selected consignment never linger in the table.
+    - Resets Container Freight CBM (`totalContainerCbm = 0`) and clears consignment banner messages.
+- **Immediate Data Loading on Consignment Column Selection:**
+  - Selecting or changing a Planning Consignment Column immediately triggers the item extraction engine, wipes any previous column's products, and populates the table with the planned products, quantities, and CBM of the newly selected column.
+  - If a column with 0 planned products is chosen, the table is cleanly reset to 0 items with an informative notice.
+  - Clearing the consignment column (`✕`) automatically wipes the line items and resets container CBM.
+
 ## [Release 2026-10-21] — Shipment Planning: First Column ("ITEM") Excel-Style Drag-to-Resize & Server Persistence
 
 ### 1. Shipment Planning ITEM Column Drag-to-Resize
