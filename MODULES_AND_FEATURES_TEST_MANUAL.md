@@ -1246,6 +1246,16 @@ Manage complete vendor team directory:
     - Verify that next to the spare item name, a clean non-clickable badge **`Spare Part`** is displayed in light orange.
     - Verify that clickable emoji toggle buttons (`🚜 Machine` / `⚙️ Spare`) are completely removed from all rows.
     - Verify that non-spare machine items render with a standard clean white / alternating row with zero button clutter.
+- [ ] **TC-SP-11: Responsive Layout & Zero-Overflow Hardening (100% Zoom / Multi-Resolution):**
+  - Open /sale/process/new in Google Chrome at 100% browser zoom on a standard screen/laptop resolution.
+  - Select a Customer/Entity (e.g. Om Packaging).
+  - Select a Planning Sheet (e.g. Om Packaging - Mulund).
+  - Select a Consignment Column with a long name (e.g. Mum 1 (Om Packaging - Mulund • 1 items • 56 pcs)).
+  - **Boundary Verification:** Inspect the right edge of Card 1 ('Consignment & Buyer Identification'):
+    - Verify that the ⚡ Auto-Load button remains completely within the card container boundaries.
+    - Verify that the button does not get pushed off-screen or cut off (no ⚡ Au... overflow).
+    - Verify that the combobox text cleanly truncates with an ellipsis (...) if the column track narrows, and hover tooltip reveals the complete metadata string.
+    - Verify that zooming between 90%, 100%, 110%, and 125% retains smooth responsive wrapping without card spillover.
 
 ---
 

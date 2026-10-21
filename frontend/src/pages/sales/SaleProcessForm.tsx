@@ -1294,13 +1294,15 @@ export function SaleProcessFormPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
                 gap: "16px",
                 marginBottom: "16px",
+                width: "100%",
+                minWidth: 0,
               }}
             >
               {/* 1. Entity (Organization or Buyer) Combobox */}
-              <div ref={entityDropdownRef} style={{ position: "relative" }}>
+              <div ref={entityDropdownRef} style={{ position: "relative", minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
                     Customer / Entity <span style={{ color: "#ef4444" }}>*</span>
@@ -1319,6 +1321,8 @@ export function SaleProcessFormPage() {
                   }}
                   style={{
                     width: "100%",
+                    minWidth: 0,
+                    overflow: "hidden",
                     padding: "8px 10px",
                     borderRadius: "6px",
                     border: selectedEntityId ? "1.5px solid #93C5FD" : "1px solid #cbd5e1",
@@ -1333,14 +1337,14 @@ export function SaleProcessFormPage() {
                     fontWeight: selectedEntityId ? 600 : 400,
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {selectedEntityId ? (
                       selectedEntityType === "org" ? `🏢 ${buyerName}` : `👤 ${buyerName}`
                     ) : (
                       "-- Select Entity (Organization or Buyer) --"
                     )}
                   </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                     {selectedEntityId && (
                       <span
                         onClick={(e) => {
@@ -1536,7 +1540,7 @@ export function SaleProcessFormPage() {
               </div>
 
               {/* 2. Planning Sheet / Branch Combobox */}
-              <div ref={sheetDropdownRef} style={{ position: "relative" }}>
+              <div ref={sheetDropdownRef} style={{ position: "relative", minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
                     Planning Sheet / Branch
@@ -1563,6 +1567,8 @@ export function SaleProcessFormPage() {
                   }}
                   style={{
                     width: "100%",
+                    minWidth: 0,
+                    overflow: "hidden",
                     padding: "8px 10px",
                     borderRadius: "6px",
                     border: !selectedEntityId
@@ -1582,7 +1588,7 @@ export function SaleProcessFormPage() {
                     opacity: !selectedEntityId ? 0.75 : 1,
                   }}
                 >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {!selectedEntityId ? (
                       "🔒 Select Customer / Entity first"
                     ) : selectedSheetName ? (
@@ -1591,7 +1597,7 @@ export function SaleProcessFormPage() {
                       `-- Select Sheet in ${buyerName} --`
                     )}
                   </span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                     {selectedEntityId && selectedSheetId && (
                       <span
                         onClick={(e) => {
@@ -1717,7 +1723,7 @@ export function SaleProcessFormPage() {
               </div>
 
               {/* 3. Planning Consignment Column Combobox */}
-              <div ref={consignmentDropdownRef} style={{ position: "relative" }}>
+              <div ref={consignmentDropdownRef} style={{ position: "relative", minWidth: 0 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                   <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>
                     Planning Consignment Column
@@ -1733,9 +1739,9 @@ export function SaleProcessFormPage() {
                   )}
                 </div>
 
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", width: "100%", minWidth: 0 }}>
                   {/* Combobox Trigger Button */}
-                  <div style={{ flex: 1, position: "relative" }}>
+                  <div style={{ flex: "1 1 0%", minWidth: 0, position: "relative" }}>
                     <button
                       type="button"
                       disabled={!selectedEntityId || !selectedSheetId}
@@ -1743,8 +1749,15 @@ export function SaleProcessFormPage() {
                         if (!selectedEntityId || !selectedSheetId) return;
                         setConsignmentOpen((prev) => !prev);
                       }}
+                      title={selectedColumnId ? (() => {
+                        const col = consignments.find((c) => c.column_id === selectedColumnId);
+                        if (!col) return selectedConsignmentCode || "Consignment Selected";
+                        return `${col.column_name} (${col.sheet_name} • ${col.item_count} items • ${col.total_quantity} pcs)`;
+                      })() : undefined}
                       style={{
                         width: "100%",
+                        minWidth: 0,
+                        overflow: "hidden",
                         padding: "8px 10px",
                         borderRadius: "6px",
                         border: (!selectedEntityId || !selectedSheetId)
@@ -1764,20 +1777,20 @@ export function SaleProcessFormPage() {
                         opacity: (!selectedEntityId || !selectedSheetId) ? 0.75 : 1,
                       }}
                     >
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {!selectedEntityId ? (
-                          "🔒 Select Customer / Entity first"
+                          "🔒 Select Customer first"
                         ) : !selectedSheetId ? (
-                          "🔒 Select Planning Sheet first"
+                          "🔒 Select Sheet first"
                         ) : selectedColumnId ? (() => {
                           const col = consignments.find((c) => c.column_id === selectedColumnId);
                           if (!col) return selectedConsignmentCode || "Consignment Selected";
-                          return `${col.column_name} (${col.sheet_name} • ${col.item_count} items • ${col.total_quantity} pcs)`;
+                          return `${col.column_name} • ${col.item_count} items (${col.total_quantity} pcs)`;
                         })() : (
                           selectedSheetName ? `🔍 Select consignment in ${selectedSheetName}...` : "🔍 Select consignment column..."
                         )}
                       </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                         {selectedEntityId && selectedSheetId && selectedColumnId && (
                           <span
                             onClick={(e) => {
@@ -1896,7 +1909,11 @@ export function SaleProcessFormPage() {
                     disabled={!selectedEntityId || !selectedSheetId || !selectedColumnId || extractingItems}
                     onClick={() => handleExtractConsignment()}
                     style={{
-                      padding: "8px 14px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "4px",
+                      padding: "8px 10px",
                       borderRadius: "6px",
                       background: (selectedEntityId && selectedSheetId && selectedColumnId && !extractingItems) ? "#0284c7" : "#e2e8f0",
                       color: (selectedEntityId && selectedSheetId && selectedColumnId && !extractingItems) ? "#ffffff" : "#94a3b8",
@@ -1910,7 +1927,17 @@ export function SaleProcessFormPage() {
                     }}
                     title="Load all products with quantity > 0 and remarks from this consignment column"
                   >
-                    {extractingItems ? "Loading..." : "⚡ Auto-Load"}
+                    {extractingItems ? (
+                      <>
+                        <span className="spinner" style={{ width: "12px", height: "12px", border: "2px solid #ffffff", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", animation: "spin 1s linear infinite" }} />
+                        <span>Loading...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>⚡</span>
+                        <span>Auto-Load</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>

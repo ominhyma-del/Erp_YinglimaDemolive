@@ -100,6 +100,11 @@ Step 3: Planning Consignment Column (Filtered to ONLY columns in the chosen shee
      - Regular machine items display in standard clean rows without buttons.
      - Spare parts are cleanly highlighted with a gentle **light-orange** background (`#fff7ed` / `#fffaf5`) and a non-clickable light-orange pill (`Spare Part`).
 
+6. **Responsive Layout & Zero-Overflow Hardening (100% Zoom Protection):**
+   - Row 1 grid tracks and combobox containers enforce min-width: 0, overflow: hidden, and single-line ellipsis text truncation.
+   - The Planning Consignment Column combobox cleanly truncates long consignment names with full metadata available via hover tooltip (	itle).
+   - The adjacent ⚡ Auto-Load button uses compact lex-shrink: 0 inline-flex formatting, preventing the button from ever wrapping or overflowing past the card container at 100% zoom or on compact screens.
+
 ---
 
 ## 5. Automated Notifications & Event Triggers

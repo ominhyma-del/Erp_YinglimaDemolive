@@ -23,6 +23,13 @@
   - If a column with 0 planned products is chosen, the table is cleanly reset to 0 items with an informative notice.
   - Clearing the consignment column (`✕`) automatically wipes the line items and resets container CBM.
 
+### 3. Responsive Layout & Zero-Overflow Hardening (100% Zoom Protection)
+- **Elimination of Consignment & Auto-Load Button Card Overflow:**
+  - Resolved layout blowout where long consignment labels pushed the ⚡ Auto-Load button past the card container boundary at 100% browser zoom.
+  - Added min-width: 0, overflow: hidden, and single-line ellipsis text truncation to all Row 1 grid cells, combobox buttons, and labels.
+  - Optimized consignment trigger label to concise format (${col.column_name} •  items ( pcs)) with full metadata on hover tooltip (	itle).
+  - Restyled the ⚡ Auto-Load button with lex-shrink: 0, compact padding (8px 10px), and inline-flex alignment with spinner.
+
 ## [Release 2026-10-21] — Shipment Planning: First Column ("ITEM") Excel-Style Drag-to-Resize & Server Persistence
 
 ### 1. Shipment Planning ITEM Column Drag-to-Resize
