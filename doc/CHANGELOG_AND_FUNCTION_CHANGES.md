@@ -87,6 +87,11 @@
     - Each line item displays an live `In-Stock: X units` badge.
     - When entered quantity exceeds stock, the input turns red, alerts with `⚠️ Blocked: Exceeds warehouse stock!`, and sets the submit button state to `🚫 Blocked: Insufficient Stock`.
   - **Ledger Cleanup**: Cleared legacy negative stock test entries (`OUT-2026-0001` and `INW-2026-0001`), restoring net warehouse stock to a clean 0 balance.
+  - **Complete Cascading Reset & Modal Lifecycle Hardening ([`StockMovementModal.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/inventory/StockMovementModal.tsx), [`StockMovements.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/inventory/StockMovements.tsx)):**
+    - Conditionally mounted `StockMovementModal` in `StockMovements.tsx` (`{isModalOpen && <StockMovementModal ... />}`) so unmounting flushes state completely on close.
+    - Added `resetForm()` lifecycle trigger on modal open, close, and successful voucher submission, guaranteeing the modal opens 100% fresh and blank every time.
+    - In the purchase bill/sale order search selector, clicking ✕ calls `handleClearSelectedOrder()` which immediately resets party details, reference numbers, notes, and resets the table back to 1 clean empty row.
+    - Switching between ⚡ 1-Click Extract and ✍️ Direct Manual Entry automatically clears any linked order and line items for clean manual typing.
 
 ### 2. Sale Process 3-Level Hierarchy Selector (Entity → Sheet → Consignment) & Nullable Buyer ID
 

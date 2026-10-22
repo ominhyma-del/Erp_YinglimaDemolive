@@ -801,16 +801,18 @@ export function StockMovementsPage() {
       </div>
 
       {/* Creation Modal */}
-      <StockMovementModal
-        isOpen={isModalOpen}
-        movementType={modalType}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={() => {
-          loadMovements();
-          loadMetrics();
-          loadBalances();
-        }}
-      />
+      {isModalOpen && (
+        <StockMovementModal
+          isOpen={isModalOpen}
+          movementType={modalType}
+          onClose={() => setIsModalOpen(false)}
+          onSuccess={() => {
+            loadMovements();
+            loadMetrics();
+            loadBalances();
+          }}
+        />
+      )}
 
       {/* Detail Modal */}
       <StockMovementDetailModal

@@ -145,18 +145,75 @@ export function StockMovementModal({
     return found ? found.label : "";
   }, [activeOrdersList, isInward, selectedPurchaseId, selectedSaleOrderId]);
 
+  const createEmptyItem = (): ItemRow => ({
+    product_name: "",
+    product_code: "",
+    expected_quantity: 0,
+    quantity: 0,
+    damaged_quantity: 0,
+    accepted_quantity: 0,
+    unit_rate: 0,
+  });
+
   // Line Items
-  const [items, setItems] = useState<ItemRow[]>([
-    {
-      product_name: "",
-      product_code: "",
-      expected_quantity: 0,
-      quantity: 0,
-      damaged_quantity: 0,
-      accepted_quantity: 0,
-      unit_rate: 0,
-    },
-  ]);
+  const [items, setItems] = useState<ItemRow[]>([createEmptyItem()]);
+
+  const resetForm = useCallback(() => {
+    setSourceType(isInward ? "local_purchase" : "sale_process");
+    setMovementDate(new Date().toISOString().slice(0, 10));
+    setSupplierName("");
+    setSupplierId(null);
+    setBuyerName("");
+    setBuyerId(null);
+    setReferenceNo("");
+    setWarehouseLocation("Main Godown");
+    setVehicleNo("");
+    setTransporterName("");
+    setContainerNo("");
+    setRemarks("");
+
+    setPurchaseInvoiceNo(null);
+    setSelectedPurchaseId(null);
+    setSaleOrderNo(null);
+    setSelectedSaleOrderId(null);
+
+    setOrderSearchText("");
+    setOrderDropdownOpen(false);
+    setItems([createEmptyItem()]);
+  }, [isInward]);
+
+  const handleClearSelectedOrder = useCallback(() => {
+    setSelectedPurchaseId(null);
+    setPurchaseInvoiceNo(null);
+    setSelectedSaleOrderId(null);
+    setSaleOrderNo(null);
+    setOrderSearchText("");
+    setOrderDropdownOpen(false);
+
+    setSupplierName("");
+    setSupplierId(null);
+    setBuyerName("");
+    setBuyerId(null);
+    setReferenceNo("");
+    setVehicleNo("");
+    setTransporterName("");
+    setContainerNo("");
+    setRemarks("");
+
+    setItems([createEmptyItem()]);
+  }, []);
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  // Automatically reset the form whenever the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen, resetForm]);
 
   // Load available purchases / sales orders when modal opens
   useEffect(() => {
@@ -219,7 +276,7 @@ export function StockMovementModal({
           accepted_quantity: it.quantity,
           unit_rate: it.unit_rate,
         }));
-        setItems(extractedRows.length > 0 ? extractedRows : items);
+        setItems(extractedRows.length > 0 ? extractedRows : [createEmptyItem()]);
         showToast(`Extracted ${data.items.length} items from Bill ${data.invoice_no}`, "success");
       }
     } catch (err) {
@@ -258,7 +315,7 @@ export function StockMovementModal({
           accepted_quantity: it.quantity,
           unit_rate: it.unit_rate,
         }));
-        setItems(extractedRows.length > 0 ? extractedRows : items);
+        setItems(extractedRows.length > 0 ? extractedRows : [createEmptyItem()]);
         showToast(`Extracted ${data.items.length} items from Order ${data.order_no}`, "success");
       }
     } catch (err) {
@@ -282,18 +339,7 @@ export function StockMovementModal({
   };
 
   const addItemRow = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        product_name: "",
-        product_code: "",
-        expected_quantity: 0,
-        quantity: 0,
-        damaged_quantity: 0,
-        accepted_quantity: 0,
-        unit_rate: 0,
-      },
-    ]);
+    setItems((prev) => [...prev, createEmptyItem()]);
   };
 
   const removeItemRow = (index: number) => {
@@ -370,6 +416,7 @@ export function StockMovementModal({
       if (res.data) {
         onSuccess(res.data);
       }
+      resetForm();
       onClose();
     } catch (err) {
       showToast(errorMessage(err) || "Failed to record stock movement", "error");
@@ -475,7 +522,7 @@ export function StockMovementModal({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             style={{
               border: "none",
               background: "#ffffff",
@@ -536,7 +583,13 @@ export function StockMovementModal({
                 <div style={{ display: "flex", gap: "8px" }}>
                   <button
                     type="button"
-                    onClick={() => setSourceType(isInward ? "local_purchase" : "sale_process")}
+                    onClick={() => {
+                      const target = isInward ? "local_purchase" : "sale_process";
+                      if (sourceType !== target) {
+                        setSourceType(target);
+                        handleClearSelectedOrder();
+                      }
+                    }}
                     style={{
                       padding: "4px 12px",
                       borderRadius: "6px",
@@ -555,7 +608,12 @@ export function StockMovementModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSourceType("direct")}
+                    onClick={() => {
+                      if (sourceType !== "direct") {
+                        setSourceType("direct");
+                        handleClearSelectedOrder();
+                      }
+                    }}
                     style={{
                       padding: "4px 12px",
                       borderRadius: "6px",
@@ -638,19 +696,17 @@ export function StockMovementModal({
                           backgroundColor: "transparent",
                         }}
                       />
-                      {selectedOrderLabel && !orderSearchText && (
+                      {(selectedOrderLabel || orderSearchText) && (
                         <button
                           type="button"
                           onClick={() => {
-                            if (isInward) {
-                              setSelectedPurchaseId(null);
-                              setPurchaseInvoiceNo(null);
+                            if (orderSearchText) {
+                              setOrderSearchText("");
                             } else {
-                              setSelectedSaleOrderId(null);
-                              setSaleOrderNo(null);
+                              handleClearSelectedOrder();
                             }
                           }}
-                          title="Clear selection"
+                          title={orderSearchText ? "Clear search text" : "Clear selected order & products"}
                           style={{
                             border: "none",
                             background: "transparent",
@@ -1186,7 +1242,7 @@ export function StockMovementModal({
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleClose}
                   style={{
                     padding: "8px 16px",
                     borderRadius: "6px",

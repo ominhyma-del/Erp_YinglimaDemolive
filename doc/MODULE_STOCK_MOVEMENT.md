@@ -139,3 +139,11 @@ In physical manufacturing, machinery assembly, and trade distribution, negative 
    - When preparing an Outward dispatch in `StockMovementModal`, each product displays a live badge: `In-Stock: X units`.
    - If the user types a quantity exceeding available stock, the input immediately turns red (`1.5px solid #ef4444` with light pink background), displays `⚠️ Blocked: Exceeds warehouse stock!`, and locks the submit button to `🚫 Blocked: Insufficient Stock`.
 
+---
+
+## 8. Complete Cascading Reset & Modal State Lifecycle
+- **Unmount-on-Close & Auto-Reset on Open**: The creation modal is conditionally mounted in StockMovements.tsx ({isModalOpen && <StockMovementModal ... />}) and executes 
+esetForm() upon opening, closing, or cancelling. This guarantees the modal opens 100% blank and fresh every time, eliminating leftover data from previous entries.
+- **Cascading Reset on Order Clear (✕)**: In the 1-Click extraction search bar, clicking the ✕ button immediately executes handleClearSelectedOrder(), wiping the selected purchase bill/sale order ID, clearing party/challan/logistics fields, and resetting the line items table back to a single empty row.
+- **Entry Mode Switching**: Toggling between ⚡ 1-Click Extract and ✍️ Direct Manual Entry automatically clears any linked order and resets line items so manual entries always start clean.
+- **Reset on Submit**: Upon successful creation of an Inward or Outward voucher, all form state is immediately wiped clean prior to closing the modal.
