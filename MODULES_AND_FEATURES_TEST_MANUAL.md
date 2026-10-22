@@ -625,6 +625,10 @@ Manage complete vendor team directory:
   - Verify backend API `POST /api/v1/stock/movements` strictly rejects excess quantity with `400 Bad Request` ("Insufficient Stock for '<Item>'. Available: X, requested: Y. Outward dispatch blocked to prevent negative inventory.").
 
 ### Test Cases: Live Stock Balance, Kardex History & Deletion
+- [ ] **0-Item Clean Initial State (No Ghost Rows):** Click `+ New Inward Entry` or `+ New Outward Entry` &rarr; verify modal opens in 1-Click Extract mode with **`2. GOODS LINE ITEMS (0 items)`** and displays centered empty-state banner (*"No purchase bill / sale order selected yet..."*) with **zero ghost rows**, and bottom counter shows `Total Items: 0 | Total Net Qty: 0`.
+- [ ] **Cascading Clear `✕` on Order Search Combobox:** Extract any purchase bill or sale order &rarr; click `✕` in the search input &rarr; verify search query, selected order, party names, and all line items wipe immediately, returning table to `0 items` and empty-state banner.
+- [ ] **Submit Button Locked on 0 Items:** While `items.length === 0`, verify the `Confirm & Record` button is disabled with gray styling (`#94a3b8`) and tooltip (*"Select a purchase bill / sale order or add line items first"*).
+- [ ] **Mode Switch Row Management:** Switch to `✍️ Direct Manual Entry` &rarr; verify table automatically provides 1 clean item row ready for input &rarr; switch back to `⚡ 1-Click Extract` &rarr; verify table resets cleanly to 0 items.
 - [ ] **Stock Balance Verification:** Switch to `📊 Current Stock Ledger` tab &rarr; search for the SKU received and dispatched &rarr; verify:
   $$\text{Current In-Stock} = \text{Total Inward Qty} - \text{Total Outward Qty}$$
 - [ ] **Kardex Transaction Ledger:** Click `📊 View Kardex` on any product row &rarr; verify modal displays complete chronological transaction history with running balance after each transaction.

@@ -3,6 +3,28 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-22] — Stock Movements: Clean 0-Item Empty-State Lifecycle, Ghost Row Elimination & Cascading Clear (Inward & Outward)
+
+### 1. Elimination of Ghost 1-Item Table Rows
+- **Zero-Item Initial State in 1-Click Extract Mode:**
+  - Resolved issue in `StockMovementModal.tsx` where opening, reopening, or resetting the Inward or Outward creation modal in `1-Click Extract` mode was defaulting `items` to `[createEmptyItem()]` (1 blank row), displaying `2. GOODS LINE ITEMS (1 ITEMS)` and `Total Items: 1` before any purchase bill or sale order was chosen.
+  - Initialized `items` to an empty array (`[]`) by default and in `resetForm()`.
+  - When no bill/order is selected, Section 2 displays **`2. GOODS LINE ITEMS (0 items)`** with a clean, friendly empty-state banner:
+    > *"No purchase bill [or sale order] selected yet. Search and select a confirmed purchase bill above to auto-extract line items, or click '+ Add Item' above to add products manually."*
+  - Bottom metrics bar accurately displays `Total Items: 0 | Total Net Qty: 0`.
+
+### 2. Complete Cascading Reset on Combobox Clear (✕)
+- **Instant Unselection & Wipe:**
+  - Clicking the `✕` clear button in the order search combobox immediately executes `handleClearSelectedOrder()`.
+  - Atomically clears search query, selected purchase bill / sale order ID, vendor/buyer names, challan/reference number, vehicle/transporter details, and wipes all line items back to `0 items` (`items = []`).
+
+### 3. Mode Switch Row Preparation & Submit Guard
+- **Smooth Mode Switching:**
+  - Switching from 1-Click Extract to **✍️ Direct Manual Entry** clears any linked order and initializes 1 clean blank item row (`items = [createEmptyItem()]`) so operators can start entering products immediately.
+  - Switching back to **⚡ 1-Click Extract** resets line items cleanly back to `0 items`.
+  - Operators can delete any line item via row `✕` without artificial disabled constraints; deleting all items returns to the empty-state banner.
+  - The submit button is strictly disabled (`cursor: not-allowed`, background `#94a3b8`) whenever `items.length === 0`, preventing accidental empty stock movement submissions.
+
 ## [Release 2026-10-22] — Supplier Contacts: Two-Way Synchronization with Profile, Auto-Promotion & Make Primary Feature
 
 ### 1. Two-Way Profile & Contact Roster Synchronization

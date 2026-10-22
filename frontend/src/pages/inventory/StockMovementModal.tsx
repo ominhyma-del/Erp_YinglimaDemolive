@@ -156,7 +156,7 @@ export function StockMovementModal({
   });
 
   // Line Items
-  const [items, setItems] = useState<ItemRow[]>([createEmptyItem()]);
+  const [items, setItems] = useState<ItemRow[]>([]);
 
   const resetForm = useCallback(() => {
     setSourceType(isInward ? "local_purchase" : "sale_process");
@@ -179,7 +179,7 @@ export function StockMovementModal({
 
     setOrderSearchText("");
     setOrderDropdownOpen(false);
-    setItems([createEmptyItem()]);
+    setItems([]);
   }, [isInward]);
 
   const handleClearSelectedOrder = useCallback(() => {
@@ -200,7 +200,7 @@ export function StockMovementModal({
     setContainerNo("");
     setRemarks("");
 
-    setItems([createEmptyItem()]);
+    setItems([]);
   }, []);
 
   const handleClose = () => {
@@ -276,8 +276,12 @@ export function StockMovementModal({
           accepted_quantity: it.quantity,
           unit_rate: it.unit_rate,
         }));
-        setItems(extractedRows.length > 0 ? extractedRows : [createEmptyItem()]);
-        showToast(`Extracted ${data.items.length} items from Bill ${data.invoice_no}`, "success");
+        setItems(extractedRows);
+        if (data.items.length > 0) {
+          showToast(`Extracted ${data.items.length} items from Bill ${data.invoice_no}`, "success");
+        } else {
+          showToast(`Bill ${data.invoice_no} has no line items`, "warning");
+        }
       }
     } catch (err) {
       showToast(errorMessage(err) || "Failed to extract purchase data", "error");
@@ -315,8 +319,12 @@ export function StockMovementModal({
           accepted_quantity: it.quantity,
           unit_rate: it.unit_rate,
         }));
-        setItems(extractedRows.length > 0 ? extractedRows : [createEmptyItem()]);
-        showToast(`Extracted ${data.items.length} items from Order ${data.order_no}`, "success");
+        setItems(extractedRows);
+        if (data.items.length > 0) {
+          showToast(`Extracted ${data.items.length} items from Order ${data.order_no}`, "success");
+        } else {
+          showToast(`Order ${data.order_no} has no line items`, "warning");
+        }
       }
     } catch (err) {
       showToast(errorMessage(err) || "Failed to extract sale order data", "error");
@@ -343,13 +351,25 @@ export function StockMovementModal({
   };
 
   const removeItemRow = (index: number) => {
-    if (items.length <= 1) return;
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
 
   // Submit Handler
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (items.length === 0) {
+      showToast(
+        `Please ${
+          sourceType !== "direct"
+            ? isInward
+              ? "select a confirmed purchase bill"
+              : "select a confirmed sale order"
+            : "add at least one line item"
+        } before recording stock`,
+        "error"
+      );
+      return;
+    }
     if (items.some((it) => !it.product_name.trim())) {
       showToast("Please enter Product Name for all items", "error");
       return;
@@ -612,6 +632,7 @@ export function StockMovementModal({
                       if (sourceType !== "direct") {
                         setSourceType("direct");
                         handleClearSelectedOrder();
+                        setItems([createEmptyItem()]);
                       }
                     }}
                     style={{
@@ -700,13 +721,9 @@ export function StockMovementModal({
                         <button
                           type="button"
                           onClick={() => {
-                            if (orderSearchText) {
-                              setOrderSearchText("");
-                            } else {
-                              handleClearSelectedOrder();
-                            }
+                            handleClearSelectedOrder();
                           }}
-                          title={orderSearchText ? "Clear search text" : "Clear selected order & products"}
+                          title="Clear selected order & extracted line items"
                           style={{
                             border: "none",
                             background: "transparent",
@@ -1002,7 +1019,7 @@ export function StockMovementModal({
                   2. Goods Line Items ({items.length} items)
                 </span>
                 <span style={{ fontSize: "11px", color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: "12px" }}>
-                  Scroll table to view all {items.length} items
+                  {items.length > 0 ? `Scroll table to view all ${items.length} items` : "0 items currently added"}
                 </span>
               </div>
               <button
@@ -1057,154 +1074,186 @@ export function StockMovementModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((it, idx) => (
-                    <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                      <td style={{ padding: "6px 8px" }}>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. Vacuum Sealing Film"
-                          value={it.product_name}
-                          onChange={(e) => updateItem(idx, { product_name: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "5px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13px",
-                          }}
-                        />
-                        {!isInward && it.product_name.trim() && (
-                          <div style={{ marginTop: "4px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                fontWeight: 600,
-                                padding: "1px 6px",
-                                borderRadius: "4px",
-                                backgroundColor: getItemStock(it) > 0 ? "#dcfce7" : "#fee2e2",
-                                color: getItemStock(it) > 0 ? "#15803d" : "#b91c1c",
-                              }}
-                            >
-                              In-Stock: {getItemStock(it)} units
-                            </span>
-                            {it.quantity > getItemStock(it) && (
-                              <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>
-                                ⚠️ Blocked: Exceeds warehouse stock!
+                  {items.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={isInward ? 8 : 7}
+                        style={{
+                          textAlign: "center",
+                          padding: "36px 16px",
+                          color: "#64748b",
+                          backgroundColor: "#fcfdfe",
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontSize: "28px" }}>{isInward ? "📥" : "📤"}</span>
+                          <span style={{ fontWeight: 600, fontSize: "14px", color: "#334155" }}>
+                            {sourceType !== "direct"
+                              ? isInward
+                                ? "No purchase bill selected yet"
+                                : "No sale order selected yet"
+                              : "No line items added yet"}
+                          </span>
+                          <span style={{ fontSize: "12px", color: "#64748b", maxWidth: "480px", lineHeight: "1.5" }}>
+                            {sourceType !== "direct"
+                              ? `Search and select a confirmed ${
+                                  isInward ? "purchase bill" : "sale order"
+                                } above to auto-extract line items, or click "+ Add Item" above to add products manually.`
+                              : 'Click the "+ Add Item" button above to add line items manually to this stock movement.'}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((it, idx) => (
+                      <tr key={idx} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                        <td style={{ padding: "6px 8px" }}>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Vacuum Sealing Film"
+                            value={it.product_name}
+                            onChange={(e) => updateItem(idx, { product_name: e.target.value })}
+                            style={{
+                              width: "100%",
+                              padding: "5px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          />
+                          {!isInward && it.product_name.trim() && (
+                            <div style={{ marginTop: "4px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                              <span
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: 600,
+                                  padding: "1px 6px",
+                                  borderRadius: "4px",
+                                  backgroundColor: getItemStock(it) > 0 ? "#dcfce7" : "#fee2e2",
+                                  color: getItemStock(it) > 0 ? "#15803d" : "#b91c1c",
+                                }}
+                              >
+                                In-Stock: {getItemStock(it)} units
                               </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>
-                        <input
-                          type="text"
-                          placeholder="SKU"
-                          value={it.product_code || ""}
-                          onChange={(e) => updateItem(idx, { product_code: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "5px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13px",
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                        <input
-                          type="number"
-                          step="any"
-                          value={it.expected_quantity || ""}
-                          onChange={(e) => updateItem(idx, { expected_quantity: parseFloat(e.target.value) || 0 })}
-                          style={{
-                            width: "100%",
-                            textAlign: "right",
-                            padding: "5px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13px",
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: "6px 8px", textAlign: "right" }}>
-                        <input
-                          type="number"
-                          step="any"
-                          required
-                          value={it.quantity || ""}
-                          onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })}
-                          style={{
-                            width: "100%",
-                            textAlign: "right",
-                            padding: "5px 8px",
-                            borderRadius: "6px",
-                            border:
-                              !isInward && it.quantity > getItemStock(it)
-                                ? "1.5px solid #ef4444"
-                                : "1px solid #94a3b8",
-                            backgroundColor:
-                              !isInward && it.quantity > getItemStock(it) ? "#fff1f2" : "#ffffff",
-                            fontWeight: 600,
-                            fontSize: "13px",
-                          }}
-                        />
-                      </td>
-                      {isInward && (
+                              {it.quantity > getItemStock(it) && (
+                                <span style={{ fontSize: "11px", color: "#dc2626", fontWeight: 700 }}>
+                                  ⚠️ Blocked: Exceeds warehouse stock!
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <input
+                            type="text"
+                            placeholder="SKU"
+                            value={it.product_code || ""}
+                            onChange={(e) => updateItem(idx, { product_code: e.target.value })}
+                            style={{
+                              width: "100%",
+                              padding: "5px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          />
+                        </td>
                         <td style={{ padding: "6px 8px", textAlign: "right" }}>
                           <input
                             type="number"
                             step="any"
-                            value={it.damaged_quantity || ""}
-                            onChange={(e) => updateItem(idx, { damaged_quantity: parseFloat(e.target.value) || 0 })}
+                            value={it.expected_quantity || ""}
+                            onChange={(e) => updateItem(idx, { expected_quantity: parseFloat(e.target.value) || 0 })}
                             style={{
                               width: "100%",
                               textAlign: "right",
                               padding: "5px 8px",
                               borderRadius: "6px",
                               border: "1px solid #cbd5e1",
-                              color: it.damaged_quantity > 0 ? "#dc2626" : "#475569",
                               fontSize: "13px",
                             }}
                           />
                         </td>
-                      )}
-                      <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: "#16a34a" }}>
-                        {it.accepted_quantity.toLocaleString()}
-                      </td>
-                      <td style={{ padding: "6px 8px" }}>
-                        <input
-                          type="text"
-                          placeholder="e.g. 10 Boxes"
-                          value={it.package_details || ""}
-                          onChange={(e) => updateItem(idx, { package_details: e.target.value })}
-                          style={{
-                            width: "100%",
-                            padding: "5px 8px",
-                            borderRadius: "6px",
-                            border: "1px solid #cbd5e1",
-                            fontSize: "13px",
-                          }}
-                        />
-                      </td>
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                        <button
-                          type="button"
-                          onClick={() => removeItemRow(idx)}
-                          disabled={items.length <= 1}
-                          style={{
-                            border: "none",
-                            background: "transparent",
-                            color: items.length <= 1 ? "#cbd5e1" : "#ef4444",
-                            cursor: items.length <= 1 ? "not-allowed" : "pointer",
-                            fontSize: "16px",
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          <input
+                            type="number"
+                            step="any"
+                            required
+                            value={it.quantity || ""}
+                            onChange={(e) => updateItem(idx, { quantity: parseFloat(e.target.value) || 0 })}
+                            style={{
+                              width: "100%",
+                              textAlign: "right",
+                              padding: "5px 8px",
+                              borderRadius: "6px",
+                              border:
+                                !isInward && it.quantity > getItemStock(it)
+                                  ? "1.5px solid #ef4444"
+                                  : "1px solid #94a3b8",
+                              backgroundColor:
+                                !isInward && it.quantity > getItemStock(it) ? "#fff1f2" : "#ffffff",
+                              fontWeight: 600,
+                              fontSize: "13px",
+                            }}
+                          />
+                        </td>
+                        {isInward && (
+                          <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                            <input
+                              type="number"
+                              step="any"
+                              value={it.damaged_quantity || ""}
+                              onChange={(e) => updateItem(idx, { damaged_quantity: parseFloat(e.target.value) || 0 })}
+                              style={{
+                                width: "100%",
+                                textAlign: "right",
+                                padding: "5px 8px",
+                                borderRadius: "6px",
+                                border: "1px solid #cbd5e1",
+                                color: it.damaged_quantity > 0 ? "#dc2626" : "#475569",
+                                fontSize: "13px",
+                              }}
+                            />
+                          </td>
+                        )}
+                        <td style={{ padding: "6px 8px", textAlign: "right", fontWeight: 700, color: "#16a34a" }}>
+                          {it.accepted_quantity.toLocaleString()}
+                        </td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <input
+                            type="text"
+                            placeholder="e.g. 10 Boxes"
+                            value={it.package_details || ""}
+                            onChange={(e) => updateItem(idx, { package_details: e.target.value })}
+                            style={{
+                              width: "100%",
+                              padding: "5px 8px",
+                              borderRadius: "6px",
+                              border: "1px solid #cbd5e1",
+                              fontSize: "13px",
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => removeItemRow(idx)}
+                            title="Remove item"
+                            style={{
+                              border: "none",
+                              background: "transparent",
+                              color: "#ef4444",
+                              cursor: "pointer",
+                              fontSize: "16px",
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1258,24 +1307,33 @@ export function StockMovementModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={submitting || hasOutwardDeficit}
+                  disabled={submitting || hasOutwardDeficit || items.length === 0}
                   style={{
                     padding: "8px 20px",
                     borderRadius: "6px",
                     border: "none",
-                    background: hasOutwardDeficit
-                      ? "#94a3b8"
-                      : isInward
-                      ? "linear-gradient(135deg, #16a34a 0%, #15803d 100%)"
-                      : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                    background:
+                      hasOutwardDeficit || items.length === 0
+                        ? "#94a3b8"
+                        : isInward
+                        ? "linear-gradient(135deg, #16a34a 0%, #15803d 100%)"
+                        : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
                     fontSize: "13px",
                     fontWeight: 700,
                     color: "#ffffff",
-                    cursor: submitting || hasOutwardDeficit ? "not-allowed" : "pointer",
-                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    cursor:
+                      submitting || hasOutwardDeficit || items.length === 0
+                        ? "not-allowed"
+                        : "pointer",
+                    boxShadow:
+                      hasOutwardDeficit || items.length === 0
+                        ? "none"
+                        : "0 2px 4px rgba(0, 0, 0, 0.1)",
                   }}
                   title={
-                    hasOutwardDeficit
+                    items.length === 0
+                      ? `Select a ${isInward ? "purchase bill" : "sale order"} or add line items first`
+                      : hasOutwardDeficit
                       ? "Outward dispatch blocked: One or more items exceed warehouse in-stock balance"
                       : undefined
                   }

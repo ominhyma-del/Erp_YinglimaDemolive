@@ -141,9 +141,19 @@ In physical manufacturing, machinery assembly, and trade distribution, negative 
 
 ---
 
-## 8. Complete Cascading Reset & Modal State Lifecycle
-- **Unmount-on-Close & Auto-Reset on Open**: The creation modal is conditionally mounted in StockMovements.tsx ({isModalOpen && <StockMovementModal ... />}) and executes 
-esetForm() upon opening, closing, or cancelling. This guarantees the modal opens 100% blank and fresh every time, eliminating leftover data from previous entries.
-- **Cascading Reset on Order Clear (✕)**: In the 1-Click extraction search bar, clicking the ✕ button immediately executes handleClearSelectedOrder(), wiping the selected purchase bill/sale order ID, clearing party/challan/logistics fields, and resetting the line items table back to a single empty row.
-- **Entry Mode Switching**: Toggling between ⚡ 1-Click Extract and ✍️ Direct Manual Entry automatically clears any linked order and resets line items so manual entries always start clean.
+## 8. Complete Cascading Reset, 0-Item Clean Empty-State & Modal Lifecycle
+- **Unmount-on-Close & Auto-Reset on Open**: The creation modal is conditionally mounted in `StockMovements.tsx` (`{isModalOpen && <StockMovementModal ... />}`) and executes `resetForm()` upon opening, closing, or cancelling. This guarantees the modal opens 100% blank and fresh every time, eliminating leftover data from previous entries.
+- **Initial 0-Item Clean State (No Ghost Rows)**:
+  - In **⚡ 1-Click Extract** mode (for both Inward and Outward), `items` defaults to an empty list (`[]`).
+  - Section 2 displays **`2. GOODS LINE ITEMS (0 items)`** with a centered empty-state banner:
+    > *"No purchase bill [or sale order] selected yet. Search and select a confirmed purchase bill above to auto-extract line items, or click '+ Add Item' above to add products manually."*
+  - This eliminates the confusion of displaying a blank ghost row (`(1 ITEMS)`) before an order has even been selected.
+- **Cascading Reset on Order Clear (✕)**:
+  - In the 1-Click extraction search bar, clicking the `✕` clear button immediately executes `handleClearSelectedOrder()`, wiping the selected purchase bill/sale order ID, clearing party/challan/logistics fields, and resetting the line items table back to **0 items** (`items = []`).
+- **Entry Mode Switching**:
+  - Toggling from 1-Click Extract to **✍️ Direct Manual Entry** clears any linked order and automatically prepares **1 clean blank item row** (`items = [createEmptyItem()]`) so the user can begin typing immediately.
+  - Toggling back to 1-Click Extract resets the selection and returns `items` to **0 items**.
+- **Item Removal & Submit Lock**:
+  - All rows can be individually removed using the row `✕` button. Removing all rows safely displays the empty-state banner.
+  - The submit button is strictly disabled with a grayed-out state (`#94a3b8`) and `cursor: not-allowed` whenever `items.length === 0`, completely preventing accidental submission of empty movements.
 - **Reset on Submit**: Upon successful creation of an Inward or Outward voucher, all form state is immediately wiped clean prior to closing the modal.
