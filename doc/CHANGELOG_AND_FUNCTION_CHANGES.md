@@ -3,6 +3,30 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-22] — Supplier Contacts: Two-Way Synchronization with Profile, Auto-Promotion & Make Primary Feature
+
+### 1. Two-Way Profile & Contact Roster Synchronization
+- **Elimination of Desynchronization:**
+  - Resolved issue where adding a contact in the **Contacts** tab of a supplier (e.g., `om1`) did not reflect in the **Profile** tab's **`Primary Contact Information`** section, leaving the inputs blank.
+  - Adding or updating a primary contact now immediately synchronizes with the `Supplier` entity's `contact_salutation`, `contact_full_name`, `contact_designation`, `contact_calling_number`, `contact_whatsapp_number`, `contact_wechat_number`, and `emails`.
+  - In `Suppliers.tsx`, submitting a contact drawer immediately triggers `refreshSupplierProfileAfterContactChange()`, which updates both `form` state and the background `rows` table without requiring a page reload. Switching back to the Profile tab shows the updated contact details immediately.
+
+### 2. Auto-Promotion of First Contact to Primary
+- **Automatic Primary Assignment:**
+  - When a supplier is created without contact details, adding the first contact in the Contacts tab automatically designates it as `is_primary = True` and writes its information to the supplier's primary profile fields.
+  - In `Suppliers.tsx`, opening the contact drawer with an empty profile or empty roster defaults `Set as Primary Contact` to checked.
+
+### 3. 1-Click "★ Make Primary" & Endpoint Support
+- **Promote Secondary Contacts:**
+  - Added a `★ Make Primary` button on all secondary contact rows in the Contacts sub-table.
+  - Added endpoints `POST /suppliers/{id}/contacts/{contact_id}/make-primary`, `/primary`, and `/set-primary` to atomically promote the contact, demote previous primaries, and update the parent supplier profile.
+  - Added `★ Primary` badge to clearly distinguish primary contacts from secondary team members.
+  - Primary contact deletion is guarded (`ConflictException` with user-friendly error message) to prevent accidental removal of active profile contact details.
+
+### 4. Existing Record Hydration
+- **Fallback Hydration:**
+  - When opening the edit modal for any existing supplier whose `contact_full_name` was previously blank, `openModal()` automatically hydrates form inputs from the supplier's primary contact (or first roster contact), ensuring instant visibility.
+
 ## [Release 2026-10-21] — Sale Process: Customer Gating Lockout & Cascading Reset of Planning Sheets, Consignments, and Line Items
 
 ### 1. Customer Selection Gating & Padlock Lockout

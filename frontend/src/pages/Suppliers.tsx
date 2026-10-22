@@ -196,6 +196,7 @@ const EMPTY_CONTACT_FORM = {
   whatsapp_number: "",
   wechat_number: "",
   email: "",
+  is_primary: false,
 };
 
 /** Positive-sounding values read as active; everything else is neutral. */
@@ -1633,17 +1634,28 @@ export function SuppliersPage() {
     setFormCityCustomText("");
 
     if (supplier) {
+      const primaryContact = (supplier.contacts || []).find((c) => c.is_primary) || (supplier.contacts && supplier.contacts.length > 0 ? supplier.contacts[0] : null);
+      const initialName = (supplier.contact_full_name || "").trim() || (primaryContact?.person_name || "");
+      const initialSalutation = (supplier.contact_salutation || "").trim() || (primaryContact?.salutation || "");
+      const initialDesignation = (supplier.contact_designation || "").trim() || (primaryContact?.designation || "");
+      const initialCalling = (supplier.contact_calling_number || "").trim() || (primaryContact?.calling_number || "");
+      const initialWhatsapp = (supplier.contact_whatsapp_number || "").trim() || (primaryContact?.whatsapp_number || "");
+      const initialWechat = (supplier.contact_wechat_number || "").trim() || (primaryContact?.wechat_number || "");
+      const initialEmails = (supplier.emails && supplier.emails.length > 0)
+        ? supplier.emails
+        : (primaryContact?.email ? [primaryContact.email] : []);
+
       setForm({
         company_name: supplier.company_name || "",
         supplier_type: supplier.supplier_type || "",
         brand_description: supplier.brand_description || "",
-        contact_salutation: supplier.contact_salutation || "",
-        contact_full_name: supplier.contact_full_name || "",
-        contact_designation: supplier.contact_designation || "",
-        contact_calling_number: supplier.contact_calling_number || "",
-        contact_whatsapp_number: supplier.contact_whatsapp_number || "",
-        contact_wechat_number: supplier.contact_wechat_number || "",
-        emails: supplier.emails || [],
+        contact_salutation: initialSalutation,
+        contact_full_name: initialName,
+        contact_designation: initialDesignation,
+        contact_calling_number: initialCalling,
+        contact_whatsapp_number: initialWhatsapp,
+        contact_wechat_number: initialWechat,
+        emails: initialEmails,
         tax_id_number: supplier.tax_id_number || "",
         address: supplier.address || "",
         primary_website: supplier.primary_website || "",
@@ -1669,10 +1681,10 @@ export function SuppliersPage() {
       // Once a supplier is Existing it cannot be reverted to New.
       setLockNewStatus(supplier.current_status === "existing");
       setContacts(supplier.contacts || []);
-      if (supplier.contact_calling_number && supplier.contact_whatsapp_number === supplier.contact_calling_number) {
+      if (initialCalling && initialWhatsapp === initialCalling) {
         setWhatsappSameAsCalling(true);
       }
-      if (supplier.contact_calling_number && supplier.contact_wechat_number === supplier.contact_calling_number) {
+      if (initialCalling && initialWechat === initialCalling) {
         setWechatSameAsCalling(true);
       }
       if (supplier.country_id) {
@@ -2040,15 +2052,58 @@ export function SuppliersPage() {
     await saveSupplierData("exit");
   }
 
+  async function refreshSupplierProfileAfterContactChange(supplierId: string) {
+    try {
+      const [supplierRes, contactsRes] = await Promise.all([
+        apiGet<Supplier>(`/suppliers/${supplierId}`),
+        apiGet<SupplierContact[]>(`/suppliers/${supplierId}/contacts`),
+      ]);
+      if (supplierRes.data) {
+        const fullSupplier = supplierRes.data;
+        setForm((prev) => ({
+          ...prev,
+          contact_salutation: fullSupplier.contact_salutation || "",
+          contact_full_name: fullSupplier.contact_full_name || "",
+          contact_designation: fullSupplier.contact_designation || "",
+          contact_calling_number: fullSupplier.contact_calling_number || "",
+          contact_whatsapp_number: fullSupplier.contact_whatsapp_number || "",
+          contact_wechat_number: fullSupplier.contact_wechat_number || "",
+          emails: fullSupplier.emails || [],
+        }));
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === supplierId
+              ? {
+                  ...r,
+                  contact_salutation: fullSupplier.contact_salutation || null,
+                  contact_full_name: fullSupplier.contact_full_name || null,
+                  contact_designation: fullSupplier.contact_designation || null,
+                  contact_calling_number: fullSupplier.contact_calling_number || null,
+                  contact_whatsapp_number: fullSupplier.contact_whatsapp_number || null,
+                  contact_wechat_number: fullSupplier.contact_wechat_number || null,
+                  emails: fullSupplier.emails || [],
+                }
+              : r
+          )
+        );
+      }
+      if (contactsRes.data) {
+        setContacts(contactsRes.data);
+      }
+    } catch (err) {
+      console.error("Failed to re-sync supplier profile after contact change:", err);
+    }
+  }
+
   async function refreshContacts() {
     if (!currentSupplierId) return;
-    const { data } = await apiGet<SupplierContact[]>(`/suppliers/${currentSupplierId}/contacts`);
-    setContacts(data);
+    await refreshSupplierProfileAfterContactChange(currentSupplierId);
   }
 
   function openContactForm(contact: SupplierContact | null) {
     setDrawerError(null);
     setContactSubmitting(false);
+    const hasExistingPrimary = contacts.some((c) => c.is_primary);
     setContactForm(
       contact
         ? {
@@ -2061,8 +2116,12 @@ export function SuppliersPage() {
           whatsapp_number: contact.whatsapp_number || "",
           wechat_number: contact.wechat_number || "",
           email: contact.email || "",
+          is_primary: Boolean(contact.is_primary),
         }
-        : EMPTY_CONTACT_FORM
+        : {
+          ...EMPTY_CONTACT_FORM,
+          is_primary: !hasExistingPrimary || !form.contact_full_name.trim(),
+        }
     );
     setContactCountryId(contact?.country_id || formCountryId || defaultChinaId || null);
     setContactSameCallingWhatsapp(false);
@@ -2091,6 +2150,7 @@ export function SuppliersPage() {
       whatsapp_number: contactForm.whatsapp_number.trim() || null,
       wechat_number: contactForm.wechat_number.trim() || null,
       email: contactForm.email.trim() || null,
+      is_primary: contactForm.is_primary,
     };
 
     setContactSubmitting(true);
@@ -2101,12 +2161,24 @@ export function SuppliersPage() {
         await apiPost(`/suppliers/${currentSupplierId}/contacts`, payload);
       }
       setContactFormOpen(false);
-      await refreshContacts();
+      await refreshSupplierProfileAfterContactChange(currentSupplierId);
     } catch (err) {
       setDrawerError(err);
     } finally {
       setContactSubmitting(false);
     }
+  }
+
+  async function handleMakePrimaryContact(contactId: string) {
+    if (!currentSupplierId) return;
+    await guardRowAction(`primary-contact:${contactId}`, async () => {
+      try {
+        await apiPost(`/suppliers/${currentSupplierId}/contacts/${contactId}/make-primary`, {});
+        await refreshSupplierProfileAfterContactChange(currentSupplierId);
+      } catch (err) {
+        setError(err);
+      }
+    });
   }
 
   async function handleContactDelete(contactId: string) {
@@ -3735,6 +3807,19 @@ export function SuppliersPage() {
                           </div>
                         </div>
 
+                        {/* Primary Contact Option */}
+                        <div style={{ background: "#f8fafc", padding: "10px 14px", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                          <label style={{ fontSize: "13px", fontWeight: 600, color: "#1e293b", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "8px", margin: 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(contactForm.is_primary)}
+                              onChange={(e) => setContactForm((prev) => ({ ...prev, is_primary: e.target.checked }))}
+                              style={{ width: "16px", height: "16px", cursor: "pointer" }}
+                            />
+                            <span>★ Set as Primary Contact <span style={{ fontSize: "12px", color: "#64748b", fontWeight: 400 }}>(Reflects into Supplier Profile)</span></span>
+                          </label>
+                        </div>
+
                         {/* Designation */}
                         <div className="field">
                           <label style={{ fontSize: "12.5px", fontWeight: 600, color: "#475569", marginBottom: "6px", display: "block" }}>
@@ -4032,7 +4117,7 @@ export function SuppliersPage() {
                         <th style={{ padding: "12px 14px", textAlign: "left", fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>CALLING / WHATSAPP</th>
                         <th style={{ padding: "12px 14px", textAlign: "left", fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>WECHAT / EMAIL</th>
                         <th style={{ padding: "12px 14px", textAlign: "left", fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase" }}>HANDLING TERRITORY</th>
-                        <th style={{ padding: "12px 14px", textAlign: "center", fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase", width: "140px" }}>ACTION</th>
+                        <th style={{ padding: "12px 14px", textAlign: "center", fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase", minWidth: "220px", width: "230px" }}>ACTION</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4047,11 +4132,15 @@ export function SuppliersPage() {
                           <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
                             {/* NAME / DESIGNATION */}
                             <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
-                              <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "13.5px" }}>
-                                {c.salutation ? `${c.salutation} ` : ""}{c.person_name}
-                                {c.is_primary && (
-                                  <span style={{ marginLeft: "6px", background: "#e2e8f0", color: "#334155", fontSize: "11px", fontWeight: 600, padding: "1px 6px", borderRadius: "4px" }}>
-                                    Primary
+                              <div style={{ fontWeight: 700, color: "#0f172a", fontSize: "13.5px", display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                <span>{c.salutation ? `${c.salutation} ` : ""}{c.person_name}</span>
+                                {c.is_primary ? (
+                                  <span style={{ background: "#dbeafe", color: "#1d4ed8", fontSize: "11px", fontWeight: 700, padding: "2px 8px", borderRadius: "10px", display: "inline-flex", alignItems: "center", gap: "3px" }}>
+                                    ★ Primary
+                                  </span>
+                                ) : (
+                                  <span style={{ background: "#f1f5f9", color: "#64748b", fontSize: "11px", fontWeight: 500, padding: "2px 6px", borderRadius: "4px" }}>
+                                    Secondary
                                   </span>
                                 )}
                               </div>
@@ -4103,7 +4192,31 @@ export function SuppliersPage() {
 
                             {/* ACTION */}
                             <td style={{ padding: "12px 14px", verticalAlign: "top", textAlign: "center" }}>
-                              <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                              <div style={{ display: "flex", gap: "8px", justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+                                {!c.is_primary && (
+                                  <button
+                                    type="button"
+                                    disabled={isRowActionPending(`primary-contact:${c.id}`)}
+                                    onClick={() => handleMakePrimaryContact(c.id)}
+                                    style={{
+                                      background: "#eff6ff",
+                                      color: "#1d4ed8",
+                                      border: "1px solid #bfdbfe",
+                                      borderRadius: "5px",
+                                      padding: "5px 10px",
+                                      fontSize: "12px",
+                                      fontWeight: 600,
+                                      cursor: isRowActionPending(`primary-contact:${c.id}`) ? "default" : "pointer",
+                                      opacity: isRowActionPending(`primary-contact:${c.id}`) ? 0.6 : 1,
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                    }}
+                                    title="Set this contact as Primary (syncs to Supplier Profile)"
+                                  >
+                                    {isRowActionPending(`primary-contact:${c.id}`) ? "Updating…" : "★ Make Primary"}
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => openContactForm(c)}

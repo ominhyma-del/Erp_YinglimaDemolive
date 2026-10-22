@@ -244,6 +244,7 @@ Manage complete vendor team directory:
 - **`+ Add New` Button**: Opens portal-mounted right-side drawer modal (`createPortal` to `document.body` with `backdropFadeIn` and `slideInRight` smooth animations, `useBodyScrollLock`, and `Esc` key listener) with:
   - **Salutation**: `Mr`, `Mr.`, `Mrs.`, `Ms.`
   - **Person Name** (*Required*): Full name with auto-focus and native validation.
+  - **Set as Primary Contact**: Checkbox card (`★ Set as Primary Contact (Reflects into Supplier Profile)`). Automatically checked for the supplier's first contact or when Profile contact details are unset.
   - **Designation**: Role / title.
   - **Handling Territory**: e.g., local, Export India, Export Africa, Export Global.
   - **Calling Number**: Phone input with country dial code prefix indicator.
@@ -252,7 +253,15 @@ Manage complete vendor team directory:
   - **Email Address**: Direct email.
   - **Country**: Country dropdown with automatic dial code resolution.
   - **Footer Actions**: Pinned `Cancel` and full-width `Submit` button properly bound to form ID.
-- **Contacts Table**: Lists all contacts with territory, phone, WhatsApp, WeChat, email, `Edit` button, and `Delete` button.
+- **Two-Way Profile Synchronization Engine:**
+  - Adding or editing a primary contact immediately synchronizes with the `Profile` tab's `Primary Contact Information` section (`contact_full_name`, `contact_designation`, `contact_calling_number`, `contact_whatsapp_number`, `contact_wechat_number`, and `emails`).
+  - Switching back to the Profile tab shows the updated contact details immediately with zero latency.
+  - If a supplier previously had contacts in `supplier_contacts` but empty profile fields, opening the edit modal automatically hydrates the Profile form from the primary contact.
+- **Contacts Table**:
+  - **Primary Badge**: Displays prominent blue `★ Primary` badge on the designated primary contact. Secondary contacts display `Secondary`.
+  - **★ Make Primary Action**: Secondary contacts feature a 1-click `★ Make Primary` button. Clicking promotes that contact to primary, demotes previous primary, updates the backend `Supplier` row, and syncs the Profile tab and list table in real time.
+  - **Delete Guard**: Primary contact is protected from direct deletion (`Delete` button hidden/blocked with ConflictException protection); users must designate another contact as primary first before deleting.
+  - **Actions**: `★ Make Primary` (for secondary), `✏️ Edit`, and `🗑️ Delete` (for secondary).
 
 #### Tab 3: 📦 Products & Categories
 - **Product Categories**: Multi-select panel.
