@@ -34,6 +34,7 @@ import { EmailTagInput, PhoneGroupField, SelectField, TextAreaField, TextField, 
 import { useLookup, useLookupNames } from "@/lib/lookups";
 import { useBodyScrollLock } from "@/lib/hooks";
 import { useLiveModule } from "@/lib/live/useLive";
+import { useConfirm } from "@/lib/confirm";
 import { handleFormEnterKeyNavigation } from "@/lib/formUtils";
 
 function resolveImageUrl(url: string | null | undefined): string {
@@ -436,6 +437,7 @@ function SupplierSkeletonRows({
 
 export function SuppliersPage() {
   const { hasPermission } = useAuth();
+  const confirm = useConfirm();
   const canCreate = hasPermission("supplier.create");
   const canUpdate = hasPermission("supplier.update");
   const canDelete = hasPermission("supplier.delete");
@@ -2182,7 +2184,13 @@ export function SuppliersPage() {
   }
 
   async function handleContactDelete(contactId: string) {
-    if (!confirm("Delete this contact?")) return;
+    const confirmed = await confirm({
+      title: "Delete Contact Person",
+      message: "Are you sure you want to remove this contact person? This action cannot be undone.",
+      confirmLabel: "Delete Contact",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     await guardRowAction(`delete-contact:${contactId}`, async () => {
       try {
         await apiDelete(`/suppliers/${currentSupplierId}/contacts/${contactId}`);
@@ -2203,7 +2211,16 @@ export function SuppliersPage() {
   }
 
   async function handleRowDelete(id: string) {
-    if (!confirm("Delete this supplier?")) return;
+    const row = rows.find((r) => r.id === id);
+    const suppName = row?.company_name || "this supplier";
+    const confirmed = await confirm({
+      title: "Delete Supplier",
+      message: `Are you sure you want to delete supplier "${suppName}"? This action cannot be undone.`,
+      itemName: suppName,
+      confirmLabel: "Delete Supplier",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     await guardRowAction(`delete:${id}`, async () => {
       try {
         await apiDelete(`/suppliers/${id}`);
@@ -2217,7 +2234,13 @@ export function SuppliersPage() {
 
   async function handleBulkDelete() {
     if (!selectedIds.length) return;
-    if (!confirm(`Delete ${selectedIds.length} selected supplier(s)? This cannot be undone.`)) return;
+    const confirmed = await confirm({
+      title: "Delete Selected Suppliers",
+      message: `Delete ${selectedIds.length} selected supplier(s)? This action cannot be undone.`,
+      confirmLabel: "Delete Selected",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     await guardRowAction("bulk-delete", async () => {
       try {
         await Promise.all(selectedIds.map((id) => apiDelete(`/suppliers/${id}`)));
@@ -2231,13 +2254,30 @@ export function SuppliersPage() {
 
   async function handleBulkDeactivate() {
     if (!selectedIds.length) return;
-    if (!confirm(`Deactivate ${selectedIds.length} selected supplier(s)?`)) return;
+    const confirmed = await confirm({
+      title: "Deactivate Selected Suppliers",
+      message: `Deactivate ${selectedIds.length} selected supplier(s)? They can be reactivated anytime.`,
+      confirmLabel: "Deactivate",
+      variant: "warning",
+    });
+    if (!confirmed) return;
+    const idsToDeactivate = [...selectedIds];
+    const previousRows = [...rows];
+
+    // 1. INSTANT 0ms OPTIMISTIC CUT-OFF
+    setSelectedIds([]);
+    if (statusTab === "active") {
+      setRows((prev) => prev.filter((s) => !idsToDeactivate.includes(s.id)));
+    }
+
+    // 2. Server persistence
     await guardRowAction("bulk-deactivate", async () => {
       try {
-        await Promise.all(selectedIds.map((id) => apiPost(`/suppliers/${id}/deactivate`, {})));
-        setSelectedIds([]);
+        await Promise.all(idsToDeactivate.map((id) => apiPost(`/suppliers/${id}/deactivate`, {})));
         reload();
       } catch (err) {
+        setRows(previousRows);
+        setSelectedIds(idsToDeactivate);
         setError(err);
       }
     });
@@ -2245,13 +2285,30 @@ export function SuppliersPage() {
 
   async function handleBulkActivate() {
     if (!selectedIds.length) return;
-    if (!confirm(`Activate ${selectedIds.length} selected supplier(s)?`)) return;
+    const confirmed = await confirm({
+      title: "Activate Selected Suppliers",
+      message: `Activate ${selectedIds.length} selected supplier(s)?`,
+      confirmLabel: "Activate",
+      variant: "primary",
+    });
+    if (!confirmed) return;
+    const idsToActivate = [...selectedIds];
+    const previousRows = [...rows];
+
+    // 1. INSTANT 0ms OPTIMISTIC CUT-OFF
+    setSelectedIds([]);
+    if (statusTab === "inactive") {
+      setRows((prev) => prev.filter((s) => !idsToActivate.includes(s.id)));
+    }
+
+    // 2. Server persistence
     await guardRowAction("bulk-activate", async () => {
       try {
-        await Promise.all(selectedIds.map((id) => apiPost(`/suppliers/${id}/activate`, {})));
-        setSelectedIds([]);
+        await Promise.all(idsToActivate.map((id) => apiPost(`/suppliers/${id}/activate`, {})));
         reload();
       } catch (err) {
+        setRows(previousRows);
+        setSelectedIds(idsToActivate);
         setError(err);
       }
     });
@@ -4280,14 +4337,14 @@ export function SuppliersPage() {
             <div className="page-header-actions" style={{ display: "flex", gap: "10px", alignItems: "center" }}>
               <button
                 type="button"
-                className="btn"
+                className={`btn btn-header-filter ${filterOpen ? "active" : ""}`}
                 style={{
                   background: filterOpen ? "#0061f2" : "#475569",
                   color: "#ffffff",
-                  padding: "8px 14px",
+                  padding: "8px 12px",
                   borderRadius: "6px",
                   border: "none",
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
@@ -4296,7 +4353,7 @@ export function SuppliersPage() {
                 onClick={() => setFilterOpen((v) => !v)}
                 title="Toggle Filter Options"
               >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
                 </svg>
               </button>

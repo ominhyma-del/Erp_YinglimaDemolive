@@ -46,6 +46,7 @@ import {
   toQueryString,
 } from "@/lib/api";
 import { useAuth, useSrNoJump, useModalHistorySync } from "@/lib/hooks";
+import { useConfirm } from "@/lib/confirm";
 import { useLiveList } from "@/lib/live/useLiveList";
 import { handleFormEnterKeyNavigation } from "@/lib/formUtils";
 import { invalidateLookupCache } from "@/lib/lookups";
@@ -561,6 +562,7 @@ export function MasterPage<T extends MasterRecord>({
   canDeleteItem,
 }: MasterPageProps<T>) {
   const { hasPermission } = useAuth();
+  const confirm = useConfirm();
 
   const canCreate = hasPermission(`${permissionPrefix}.create`);
   const canUpdate = hasPermission(`${permissionPrefix}.update`);
@@ -1284,7 +1286,17 @@ export function MasterPage<T extends MasterRecord>({
         if (resolveNames) {
           await resolveNames([recordToUse]);
         }
-        setRows((prev) => prev.map((row) => (row.id === editingId ? recordToUse : row)));
+        const updatedStatus = String(
+          (recordToUse as any)?.status ??
+          ((recordToUse as any)?.is_active === true ? "active" : (recordToUse as any)?.is_active === false ? "inactive" : "")
+        ).toLowerCase();
+
+        if (statusFilter && updatedStatus && updatedStatus !== statusFilter.toLowerCase()) {
+          setRows((prev) => prev.filter((row) => row.id !== editingId));
+          setReloadCounter((c) => c + 1);
+        } else {
+          setRows((prev) => prev.map((row) => (row.id === editingId ? recordToUse : row)));
+        }
         setAllRecords((prev) => prev.map((row) => (row.id === editingId ? recordToUse : row)));
         invalidateLookupCache(apiBase);
       } else {
@@ -1348,13 +1360,23 @@ export function MasterPage<T extends MasterRecord>({
         return;
       }
     }
-    if (!confirm(`Delete this ${entityName}? This cannot be undone.`)) return;
+    const row = rows.find((r) => r.id === id);
+    const itemName = row ? String((row as any).name || (row as any).title || (row as any).code || entityName) : entityName;
+    const confirmed = await confirm({
+      title: `Delete ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}`,
+      message: `Are you sure you want to delete this ${entityName}? This action cannot be undone.`,
+      itemName,
+      confirmLabel: `Delete ${entityName}`,
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
       await apiDelete(`${apiBase}/${id}`);
       setRows((prev) => prev.filter((row) => row.id !== id));
       setAllRecords((prev) => prev.filter((row) => row.id !== id));
       setPagination((prev) => (prev ? { ...prev, total_records: Math.max(0, (prev.total_records || 1) - 1) } : prev));
       invalidateLookupCache(apiBase);
+      setReloadCounter((c) => c + 1);
     } catch (err) {
       setError(err);
     }
@@ -1370,26 +1392,108 @@ export function MasterPage<T extends MasterRecord>({
 
   async function handleBulkActivate() {
     if (!selectedIds.length) return;
+    const idsToActivate = [...selectedIds];
+    const previousRows = [...rows];
+    const previousAllRecords = [...allRecords];
+    const previousPagination = pagination ? { ...pagination } : undefined;
+
+    // 1. INSTANT 0ms OPTIMISTIC UPDATE:
+    setSelectedIds([]);
+    if (statusFilter === "inactive") {
+      setRows((prev) => prev.filter((row) => !idsToActivate.includes(String(row.id))));
+      setPagination((prev) =>
+        prev
+          ? {
+              ...prev,
+              total_records: Math.max(0, (prev.total_records || 0) - idsToActivate.length),
+            }
+          : prev
+      );
+    } else {
+      setRows((prev) =>
+        prev.map((row) =>
+          idsToActivate.includes(String(row.id)) ? { ...row, status: "active" } : row
+        )
+      );
+    }
+    setAllRecords((prev) =>
+      prev.map((row) =>
+        idsToActivate.includes(String(row.id)) ? { ...row, status: "active" } : row
+      )
+    );
+
+    // 2. Network dispatch
     try {
-      await Promise.all(selectedIds.map((id) => apiPost(`${apiBase}/${id}/activate`)));
-      setRows((prev) => prev.map((row) => (selectedIds.includes(row.id) ? { ...row, status: "active" } : row)));
-      setAllRecords((prev) => prev.map((row) => (selectedIds.includes(row.id) ? { ...row, status: "active" } : row)));
-      setSelectedIds([]);
+      try {
+        await apiPost(`${apiBase}/bulk-activate`, { ids: idsToActivate });
+      } catch (bulkErr: any) {
+        if (bulkErr?.status === 404 || bulkErr?.status === 405) {
+          await Promise.all(idsToActivate.map((id) => apiPost(`${apiBase}/${id}/activate`)));
+        } else {
+          throw bulkErr;
+        }
+      }
       invalidateLookupCache(apiBase);
+      setReloadCounter((c) => c + 1);
     } catch (err) {
+      setRows(previousRows);
+      setAllRecords(previousAllRecords);
+      setPagination(previousPagination);
+      setSelectedIds(idsToActivate);
       setError(err);
     }
   }
 
   async function handleBulkDeactivate() {
     if (!selectedIds.length) return;
+    const idsToDeactivate = [...selectedIds];
+    const previousRows = [...rows];
+    const previousAllRecords = [...allRecords];
+    const previousPagination = pagination ? { ...pagination } : undefined;
+
+    // 1. INSTANT 0ms OPTIMISTIC UPDATE:
+    setSelectedIds([]);
+    if (statusFilter === "active") {
+      setRows((prev) => prev.filter((row) => !idsToDeactivate.includes(String(row.id))));
+      setPagination((prev) =>
+        prev
+          ? {
+              ...prev,
+              total_records: Math.max(0, (prev.total_records || 0) - idsToDeactivate.length),
+            }
+          : prev
+      );
+    } else {
+      setRows((prev) =>
+        prev.map((row) =>
+          idsToDeactivate.includes(String(row.id)) ? { ...row, status: "inactive" } : row
+        )
+      );
+    }
+    setAllRecords((prev) =>
+      prev.map((row) =>
+        idsToDeactivate.includes(String(row.id)) ? { ...row, status: "inactive" } : row
+      )
+    );
+
+    // 2. Network dispatch
     try {
-      await Promise.all(selectedIds.map((id) => apiPost(`${apiBase}/${id}/deactivate`)));
-      setRows((prev) => prev.map((row) => (selectedIds.includes(row.id) ? { ...row, status: "inactive" } : row)));
-      setAllRecords((prev) => prev.map((row) => (selectedIds.includes(row.id) ? { ...row, status: "inactive" } : row)));
-      setSelectedIds([]);
+      try {
+        await apiPost(`${apiBase}/bulk-deactivate`, { ids: idsToDeactivate });
+      } catch (bulkErr: any) {
+        if (bulkErr?.status === 404 || bulkErr?.status === 405) {
+          await Promise.all(idsToDeactivate.map((id) => apiPost(`${apiBase}/${id}/deactivate`)));
+        } else {
+          throw bulkErr;
+        }
+      }
       invalidateLookupCache(apiBase);
+      setReloadCounter((c) => c + 1);
     } catch (err) {
+      setRows(previousRows);
+      setAllRecords(previousAllRecords);
+      setPagination(previousPagination);
+      setSelectedIds(idsToDeactivate);
       setError(err);
     }
   }
@@ -1415,21 +1519,59 @@ export function MasterPage<T extends MasterRecord>({
           return;
         }
         idsToDelete = selectedIds.filter((id) => !blockedItems.some((b) => b.id === id));
-        if (!confirm(`Delete ${idsToDelete.length} deletable ${entityName}(s)? (${blockedItems.length} locked ${entityName}(s) with attached employees will be skipped). This cannot be undone.`)) return;
+        const confirmed = await confirm({
+          title: `Delete Selected ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}s`,
+          message: `Delete ${idsToDelete.length} deletable ${entityName}(s)? (${blockedItems.length} locked ${entityName}(s) with attached employees will be skipped). This cannot be undone.`,
+          confirmLabel: "Delete Deletable",
+          variant: "danger",
+        });
+        if (!confirmed) return;
       } else {
-        if (!confirm(`Delete ${selectedIds.length} selected ${entityName}(s)? This cannot be undone.`)) return;
+        const confirmed = await confirm({
+          title: `Delete Selected ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}s`,
+          message: `Delete ${selectedIds.length} selected ${entityName}(s)? This cannot be undone.`,
+          confirmLabel: "Delete Selected",
+          variant: "danger",
+        });
+        if (!confirmed) return;
       }
     } else {
-      if (!confirm(`Delete ${selectedIds.length} selected ${entityName}(s)? This cannot be undone.`)) return;
+      const confirmed = await confirm({
+        title: `Delete Selected ${entityName.charAt(0).toUpperCase() + entityName.slice(1)}s`,
+        message: `Delete ${selectedIds.length} selected ${entityName}(s)? This cannot be undone.`,
+        confirmLabel: "Delete Selected",
+        variant: "danger",
+      });
+      if (!confirmed) return;
     }
 
+    const previousRows = [...rows];
+    const previousAllRecords = [...allRecords];
+    const previousPagination = pagination ? { ...pagination } : undefined;
+
+    // 1. INSTANT 0ms OPTIMISTIC UPDATE:
+    setSelectedIds([]);
+    setRows((prev) => prev.filter((row) => !idsToDelete.includes(String(row.id))));
+    setAllRecords((prev) => prev.filter((row) => !idsToDelete.includes(String(row.id))));
+    setPagination((prev) =>
+      prev
+        ? {
+            ...prev,
+            total_records: Math.max(0, (prev.total_records || 0) - idsToDelete.length),
+          }
+        : prev
+    );
+
+    // 2. Network dispatch
     try {
       await Promise.all(idsToDelete.map((id) => apiDelete(`${apiBase}/${id}`)));
-      setRows((prev) => prev.filter((row) => !idsToDelete.includes(row.id)));
-      setAllRecords((prev) => prev.filter((row) => !idsToDelete.includes(row.id)));
-      setSelectedIds([]);
       invalidateLookupCache(apiBase);
+      setReloadCounter((c) => c + 1);
     } catch (err) {
+      setRows(previousRows);
+      setAllRecords(previousAllRecords);
+      setPagination(previousPagination);
+      setSelectedIds(idsToDelete);
       setError(err);
     }
   }
@@ -1775,9 +1917,9 @@ export function MasterPage<T extends MasterRecord>({
                   </>
                 ) : entityName.toLowerCase().includes("hsn") ? (
                   <>
-                    <li>Mandatory Columns: <strong>HSN Code</strong>. Optional: <strong>Description</strong>, <strong>GST %</strong>, <strong>Refund VAT %</strong>.</li>
+                    <li>Mandatory Columns: <strong>HSN Code</strong>. Optional: <strong>Description</strong>, <strong>GST %</strong>, <strong>Import Duty %</strong>, <strong>Purchase VAT %</strong>, <strong>Refund VAT %</strong>.</li>
                     <li><strong>HSN Code</strong> must be unique.</li>
-                    <li><strong>GST %</strong> and <strong>Refund VAT %</strong> must be numbers between 0 and 100.</li>
+                    <li><strong>GST %</strong>, <strong>Import Duty %</strong>, <strong>Purchase VAT %</strong>, and <strong>Refund VAT %</strong> must be numbers between 0 and 100.</li>
                     <li><strong>Status</strong> must be <em>Active</em> or <em>Inactive</em> (defaults to Active).</li>
                   </>
                 ) : entityName.toLowerCase() === "supplier type" ? (
@@ -2346,14 +2488,14 @@ export function MasterPage<T extends MasterRecord>({
             {Boolean(toolbarExtras) && (
               <button
                 type="button"
-                className="btn"
+                className={`btn btn-header-filter ${filterOpen ? "active" : ""}`}
                 style={{
                   background: filterOpen ? "#0061f2" : "#475569",
                   color: "#ffffff",
-                  padding: "6px 12px",
+                  padding: "8px 12px",
                   borderRadius: "6px",
                   border: "none",
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",

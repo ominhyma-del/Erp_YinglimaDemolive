@@ -28,6 +28,7 @@ import { Auth } from "@/lib/auth";
 import { useAuth } from "@/lib/hooks";
 import { useLookup } from "@/lib/lookups";
 import { useToast } from "@/lib/toast";
+import { useConfirm } from "@/lib/confirm";
 import { useLiveList } from "@/lib/live/useLiveList";
 import { roleDisplayName } from "@/lib/permissionLabels";
 import type { Role } from "@/types";
@@ -1822,6 +1823,7 @@ function SearchableEntityDropdown({
 export function PlanningPage() {
   const { hasPermission } = useAuth();
   const showToast = useToast();
+  const confirm = useConfirm();
   const canManageColumns = hasPermission("planning.column.manage");
   const canEditCells = hasPermission("planning.cell.edit");
   const canEditTestYN = hasPermission("planning.textyn.edit");
@@ -3239,7 +3241,14 @@ export function PlanningPage() {
   }
 
   async function handleDeleteSheet(sheetId: string, sheetName: string) {
-    if (!window.confirm(`Are you sure you want to delete sheet '${sheetName}'? This will remove the sheet and all its columns and rows.`)) return;
+    const confirmed = await confirm({
+      title: "Delete Planning Sheet",
+      message: `Are you sure you want to delete sheet '${sheetName}'? This will permanently remove the sheet and all its columns and rows.`,
+      itemName: sheetName,
+      confirmLabel: "Delete Sheet",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     try {
       await apiDelete(`/planning/sheets/${sheetId}`);
       await loadSheets();
@@ -3321,7 +3330,14 @@ export function PlanningPage() {
       groupColumns.length > 1
         ? `Delete the whole ${mumLabel} ${groupNum} group? This removes "${groupColumns.map((c) => c.name).join('", "')}" and every value stored in them.`
         : "Delete this column? This removes every value stored in it.";
-    if (!window.confirm(confirmMessage)) return;
+    const confirmed = await confirm({
+      title: "Delete Column",
+      message: confirmMessage,
+      itemName: target.name,
+      confirmLabel: "Delete Column",
+      variant: "danger",
+    });
+    if (!confirmed) return;
 
     try {
       for (const col of groupColumns) {

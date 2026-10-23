@@ -10,8 +10,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
+import { Can } from "@/components/ui";
 import { apiDelete, apiGet, apiPost, errorMessage } from "@/lib/api";
 import { useToast } from "@/lib/toast";
+import { useConfirm } from "@/lib/confirm";
 import type {
   StockBalanceItem,
   StockMovement,
@@ -26,6 +28,7 @@ type ActiveTab = "inward" | "outward" | "balances";
 
 export function StockMovementsPage() {
   const showToast = useToast();
+  const confirm = useConfirm();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("inward");
   const [metrics, setMetrics] = useState<StockSummaryMetrics | null>(null);
@@ -125,13 +128,14 @@ export function StockMovementsPage() {
 
   // Cancel Movement Handler
   const handleCancelMovement = async (m: StockMovement) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to cancel movement ${m.movement_no}? This will reverse the stock effect.`
-      )
-    ) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: "Cancel Stock Movement",
+      message: `Are you sure you want to cancel movement ${m.movement_no}? This will reverse the stock effect.`,
+      itemName: m.movement_no,
+      confirmLabel: "Cancel Movement",
+      variant: "warning",
+    });
+    if (!confirmed) return;
 
     try {
       await apiPost(`/stock/movements/${m.id}/cancel?reason=User+Requested`);
@@ -146,13 +150,14 @@ export function StockMovementsPage() {
 
   // Delete Movement Handler
   const handleDeleteMovement = async (m: StockMovement) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to permanently delete movement ${m.movement_no}? This will remove it from the register and restore stock balances.`
-      )
-    ) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: "Permanently Delete Movement",
+      message: `Are you sure you want to permanently delete movement ${m.movement_no}? This will remove it from the register and restore stock balances.`,
+      itemName: m.movement_no,
+      confirmLabel: "Permanently Delete",
+      variant: "danger",
+    });
+    if (!confirmed) return;
 
     try {
       await apiDelete(`/stock/movements/${m.id}`);
@@ -389,53 +394,55 @@ export function StockMovementsPage() {
 
           {/* Action Buttons */}
           <div style={{ display: "flex", gap: "10px" }}>
-            <button
-              type="button"
-              onClick={() => {
-                setModalType("inward");
-                setIsModalOpen(true);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "9px 16px",
-                borderRadius: "8px",
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#ffffff",
-                border: "none",
-                background: "linear-gradient(135deg, #16a34a 0%, #15803d 100%)",
-                cursor: "pointer",
-                boxShadow: "0 2px 4px rgba(22, 163, 74, 0.2)",
-              }}
-            >
-              + New Inward Entry
-            </button>
+            <Can permission="stock_movement.create">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalType("inward");
+                  setIsModalOpen(true);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "9px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  border: "none",
+                  background: "linear-gradient(135deg, #16a34a 0%, #15803d 100%)",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 4px rgba(22, 163, 74, 0.2)",
+                }}
+              >
+                + New Inward Entry
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setModalType("outward");
-                setIsModalOpen(true);
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "9px 16px",
-                borderRadius: "8px",
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#ffffff",
-                border: "none",
-                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                cursor: "pointer",
-                boxShadow: "0 2px 4px rgba(37, 99, 235, 0.2)",
-              }}
-            >
-              + New Outward Entry
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalType("outward");
+                  setIsModalOpen(true);
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "9px 16px",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  border: "none",
+                  background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 4px rgba(37, 99, 235, 0.2)",
+                }}
+              >
+                + New Outward Entry
+              </button>
+            </Can>
           </div>
         </div>
 
@@ -755,39 +762,43 @@ export function StockMovementsPage() {
                             >
                               View
                             </button>
-                            {m.status === "confirmed" && (
+                            <Can permission="stock_movement.cancel">
+                              {m.status === "confirmed" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelMovement(m)}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: "4px",
+                                    border: "1px solid #fecaca",
+                                    background: "#fef2f2",
+                                    color: "#dc2626",
+                                    fontSize: "12px",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  Cancel
+                                </button>
+                              )}
+                            </Can>
+                            <Can permission="stock_movement.delete">
                               <button
                                 type="button"
-                                onClick={() => handleCancelMovement(m)}
+                                onClick={() => handleDeleteMovement(m)}
                                 style={{
                                   padding: "4px 8px",
                                   borderRadius: "4px",
-                                  border: "1px solid #fecaca",
-                                  background: "#fef2f2",
-                                  color: "#dc2626",
+                                  border: "1px solid #fee2e2",
+                                  background: "#fff1f2",
+                                  color: "#e11d48",
                                   fontSize: "12px",
                                   cursor: "pointer",
                                 }}
+                                title="Delete movement entry"
                               >
-                                Cancel
+                                Delete
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteMovement(m)}
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: "4px",
-                                border: "1px solid #fee2e2",
-                                background: "#fff1f2",
-                                color: "#e11d48",
-                                fontSize: "12px",
-                                cursor: "pointer",
-                              }}
-                              title="Delete movement entry"
-                            >
-                              Delete
-                            </button>
+                            </Can>
                           </div>
                         </td>
                       </tr>

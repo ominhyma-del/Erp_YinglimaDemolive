@@ -3,6 +3,264 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-23] — Local Purchase Consignment Supplier Filtering & Multi-Vendor Container Isolation
+
+### 1. Supplier-Scoped Consignment Item Extraction
+- **Business Need & Issue:**
+  - Shipment Planning consignments (e.g. shipping container `Mum 48`) contain planned items manufactured across 10+ different manufacturing vendors.
+  - Selecting a consignment previously loaded all items from every vendor into the local purchase order table, leaving products from unrelated suppliers inside single-vendor invoices.
+- **Backend Enhancements (`LocalPurchaseService.get_consignment_items` & Routes):**
+  - Updated `GET /api/v1/purchases/local/consignments/{column_id}/items` to accept an optional `supplier_id` query parameter.
+  - Queries both primary `Product.supplier_id` and secondary relationships in `SupplierProductLink` to ensure all products linked to the chosen supplier match.
+  - Response includes `linked_supplier_ids` on each `ConsignmentProductItem`.
+  - Added automated pytest suite: `tests/test_consignment_items_supplier_filter.py` (passed 100%).
+- **Frontend Architecture (`frontend/src/pages/purchases/LocalPurchaseForm.tsx`):**
+  - **Bidirectional Dynamic Filtering:**
+    - If Supplier is selected &rarr; selecting Consignment immediately loads only that supplier's planned products from the container.
+    - If Consignment is selected &rarr; selecting or changing Supplier immediately re-filters to that supplier's products with 0ms client-side latency.
+    - If Consignment has multiple suppliers and no supplier is selected yet &rarr; prompts the user to select a supplier rather than dumping foreign vendor products into the bill.
+    - If a supplier has 0 products in the chosen consignment &rarr; clears table and shows informative status badge and toast notification.
+  - **Header Badge & Sync Hardening:**
+    - Live badge displays: `📦 {N} planned item(s) for {supplier} from Consignment {code}` with a `Load Planned Items` button.
+    - Prevented generic sheet planning queries (`/planning-items`) from overriding scoped consignment items when a consignment is active.
+
+### 2. Local Purchase Domestic Purchase VAT % Source Resolution (HSN Purchase VAT Isolation)
+- **Root Cause & Issue:**
+  - When loading planned products from consignments (e.g. `Mum 48` for supplier `Prathamesh Packaging PVT LTD`), product `Carton boxes for band sealer without thermocol` (`PROD-MUM-0002`) loaded with `VAT % = 18%`.
+  - In `LocalPurchaseService.get_consignment_items` (`service.py`), VAT % resolution code was:
+    `vat_rate = float(hsn.gst_percent) if hsn and hsn.gst_percent is not None else ...`
+  - This mistakenly fetched Indian GST (18.00%) into Chinese domestic procurement, rather than China domestic Purchase VAT (进项税 = 0.00% / 13.00%).
+- **Backend Resolution (`LocalPurchaseService`):**
+  - Updated `get_consignment_items`, `get_planning_items`, and `match_product` to resolve:
+    1. `hsn.purchase_vat_percent` (if defined and non-null)
+    2. Fallback to `product.purchase_vat_percent`
+    3. Final default: `0.00%`
+  - Indian GST (`gst_percent`) and Export Refund VAT (`refund_vat_percent`) are strictly excluded from Local Purchase calculations.
+- **Frontend Resolution (`LocalPurchaseForm.tsx`):**
+  - Updated `hsnLookup` and `productLookup` interfaces to include `purchase_vat_percent`.
+  - Updated `handleAddProduct` from search catalog to resolve `resolvedHsnObj?.purchase_vat_percent ?? prod.purchase_vat_percent ?? 0`.
+- **Verification:**
+  - Automated tests in `tests/test_consignment_items_supplier_filter.py` passed 100%, verifying `PROD-MUM-0002` correctly resolves to `0.0%` Purchase VAT instead of `18%`.
+  - Frontend TypeScript compiles cleanly (`tsc --noEmit` exit code 0).
+
+## [Release 2026-10-23] — HSN & Product Master Multi-Tax Architecture (Import Duty & Dual China VAT)
+
+### 1. HSN Master Tax Expansion (`import_duty_percent` & `purchase_vat_percent`)
+- **Database & Model Updates:**
+  - Added `import_duty_percent numeric(5, 2) NOT NULL DEFAULT 0.00` and `purchase_vat_percent numeric(5, 2) NOT NULL DEFAULT 0.00` to `hsn_codes` table and `HsnCode` ORM model.
+  - Updated Pydantic schemas (`HsnCreate`, `HsnUpdate`, `HsnRead`) and constants (`IMPORT_HEADERS`, `EXPORT_HEADERS`).
+- **UI Table & Modal Form (`frontend/src/pages/masters/Hsn.tsx`):**
+  - Added `Import Duty %` and `Purchase VAT %` columns to the HSN Codes data table.
+  - Added `Import Duty %` and `Purchase VAT %` numeric input fields (0–100%) to the Add/Edit HSN modal form.
+  - Added both rates to the HSN side drawer detail card.
+  - **Form Input UX Optimization:** Updated form initialization so tax input fields (`GST %`, `Import Duty %`, `Purchase VAT %`, `Refund VAT %`) default to blank with `placeholder="0"` instead of pre-typed literal `"0"`, eliminating the need to backspace/erase `0` before entering rates while cleanly defaulting to `0.00` upon submit.
+- **Bulk Import Parity (Add New & Update Existing):**
+  - Updated `validate_hsn_row()` to parse `Import Duty %` and `Purchase VAT %` with flexible aliases (`pay_vat_percent`, `Pay VAT %`, `import_duty_percent`, `import_duty`).
+  - `update_existing=true` accurately updates both rates on existing HSN codes.
+  - Downloadable Sample Template auto-generates with valid sample values (`Import Duty %: 7.5`, `Purchase VAT %: 13`).
+
+### 2. Product Master Dual VAT Architecture (`purchase_vat_percent`)
+- **Database & Model Updates:**
+  - Added `purchase_vat_percent numeric(5, 2) NOT NULL DEFAULT 0.00` to `products` table and `Product` ORM model.
+  - Updated Pydantic schemas (`ProductCreate`, `ProductUpdate`, `ProductRead`) and constants.
+- **Form Modal & Auto-Fill from HSN (`frontend/src/pages/masters/Products.tsx`):**
+  - Added `Purchase VAT %` input field in the Product form next to `Refund VAT %`.
+  - When an HSN code is selected from the dropdown, both `Purchase VAT %` and `Refund VAT %` auto-populate from the chosen HSN code while preserving manual overrides.
+  - Rendered `Purchase VAT %` as a dedicated blue badge in the Executive Product Detail drawer.
+- **Product Import / Export Parity:**
+  - Updated `validate_product_row()` to parse `Purchase VAT %` (and aliases `pay_vat_percent`, `Pay VAT %`).
+  - Added `Purchase VAT %` to Product CSV/XLSX export and sample templates (`sampleTemplate.ts`, `ImportWizard.tsx`).
+- **Cross-ERP Tax Sync (`backend/app/masters/products/sync_inhyma.py` & Inhyma Adapter):**
+  - In `build_product_sync_payload()`, included `gst_percent` and `import_duty_percent` from the linked HSN record, alongside `purchase_vat_percent`.
+  - Enables Inhyma ERP's Product Master to automatically receive and link the Indian Import Duty and GST rates.
+  - In `Inhyma_ERP/backend/app/integration/adapters/product.py` (`_resolve_tax`), corrected field mapping so `Tax.gst_percent` reads from `payload["gst_percent"]` (instead of mistakenly reading `refund_vat_percent`) and `Tax.import_duty_percent` reads from `payload["import_duty_percent"]`. Existing Inhyma tax records also update when updated rates sync from Yinglima.
+  - Verified comprehensive sync parity: updates in Yinglima to dimensions (`length_cm`, `width_cm`, `height_cm`, `packaging_unit_cbm`), packaging weights (`packaging_gross_weight`, `packaging_net_weight`, `packaging_quantity`), specifications, descriptions, color, and material accurately and dynamically update in Inhyma.
+  - **Deactivation & Soft-Delete Parity:** Fixed status sync in Inhyma product adapter (`product.py`) so that deactivating a product ensures `product.status = 'INACTIVE'` with `product.deleted_at = None`. This guarantees that deactivated products immediately appear in Inhyma's Inactive tab rather than being excluded as soft-deleted trash records.
+
+## [Release 2026-10-23] — Product Master & Gallery `has_images` PostgreSQL Scalar Protection
+
+### 1. Robust `has_images` Filter Handling (`ProductRepository`)
+- **Problem & Root Cause:**
+  - `GET /api/v1/masters/products?has_images=true` was failing with HTTP 500 (`asyncpg.exceptions.InvalidParameterValueError: cannot get array length of a scalar`).
+  - Some historical rows in PostgreSQL had JSON scalar strings or `null` in `products.images`. PostgreSQL query optimization re-orders `WHERE` clauses, invoking `func.json_array_length(Product.images)` before verifying that the JSON type was actually an array.
+- **Resolution in `backend/app/masters/products/repository.py`:**
+  - Added SQL `case()` expression wrapping `and_(Product.images.is_not(None), func.json_typeof(Product.images) == 'array')`, returning `json_array_length(Product.images)` only for array types, and `0` otherwise.
+  - Both `has_images=true` and `has_images=false` now execute cleanly without errors across all 885 product records.
+- **Product Gallery Impact (`frontend/src/pages/ProductGallery.tsx`):**
+  - Resolves visual photo catalog loading failures when fetching products with images (`/masters/products?has_images=true&page_size=100&sort_by=created_at&sort_order=desc`).
+  - Response time dropped to < 300ms, immediately populating the Product Catalog Media tab with photos.
+
+## [Release 2026-10-22] — Bulk Action High-Speed Endpoints & Master Form Status Cleanup
+
+### 1. High-Speed Bulk Activate and Bulk Deactivate Endpoints
+- **Endpoints Implemented:**
+  - `POST /api/v1/masters/products/bulk-activate` — Activates multiple products in a single SQL operation.
+  - `POST /api/v1/masters/products/bulk-deactivate` — Deactivates multiple products in a single SQL operation while verifying all selected items have zero stock.
+- **Frontend MasterPage Integration (`frontend/src/components/MasterPage.tsx`):**
+  - Upgraded `handleBulkActivate()` and `handleBulkDeactivate()` to call `/bulk-activate` and `/bulk-deactivate` in a single high-speed HTTP request, rather than issuing separate requests per row.
+  - Added seamless fallback to per-item endpoint for legacy masters that do not yet have bulk endpoints.
+
+### 2. Streamlined Form UX Across All Masters
+- **Removal of Redundant Status Input:**
+  - Removed `<StatusSelectField />` from all Master forms (`Products`, `Categories`, `SubCategories`, `Brands`, `Hsn`, `Uom`, `BuyerTypes`, `SupplierTypes`, `CompanyList`, `Countries`, `States`, `Cities`, `Currencies`).
+  - New records default to `"active"`; edited records cleanly preserve their existing status.
+  - Status transitions are now managed via the table's Bulk Action buttons (`Bulk Activate` and `Bulk Inactive`), eliminating clutter and preventing accidental status toggles during basic edits.
+
+### 3. Universal Instant Cut-Off & Immediate Table Refresh Across All Modules
+- **Immediate Visual Feedback on Bulk Actions:**
+  - **Active Tab (`statusFilter === "active"`):** When bulk deactivating items, selected rows are immediately removed (0ms optimistic cut-off) from the Active table view, and `setReloadCounter` triggers an instant background refetch so server-side pagination, total counts, and subsequent page records update immediately.
+  - **Inactive Tab (`statusFilter === "inactive"`):** When bulk activating items, selected rows are immediately removed from the Inactive table view and transferred to Active without requiring the user to switch tabs to refresh the table.
+- **Form Edit Status Consistency:**
+  - In `MasterPage.tsx` (`handleSubmit`), if a record's status is modified so it no longer matches the current tab's `statusFilter`, it immediately cuts off from the active list view and reloads.
+- **Cross-Module Rollout:**
+  - Applied across `MasterPage.tsx` (all Master entities), `Suppliers.tsx`, `Buyers.tsx`, and `Users.tsx`.
+
+## [Release 2026-10-22] — Product Deactivation vs Deletion Lifecycle Synchronization Fix
+
+### 1. Distinction Between Inactivation and Deletion Across ERPs
+- **Problem & Root Cause:**
+  - When marking a product Inactive in Yinglima (`PATCH /api/v1/masters/products/{id}` or `POST /{id}/deactivate`), Yinglima was emitting `event_type = "product.deactivated"`.
+  - Inhyma's integration sync engine matched `.deactivated` under `is_delete`, which invoked `apply_delete` and populated `deleted_at = now()` (soft-delete / trash).
+  - Because `deleted_at` was set, Inhyma queries automatically hid the product from BOTH the Active tab and the Inactive tab, causing Inhyma's Inactive tab to display `Inactive (0)` and "No Data".
+- **Resolution in `Yinglima_ERP` (`backend/app/masters/products/routes.py`):**
+  - Updated `update_product` and `deactivate_product` endpoints to emit `event_type = "product.updated"` with payload `{"status": "inactive", "is_active": False}`.
+  - Inhyma's `apply_update` receives this event and sets `product.status = RecordStatus.INACTIVE` with `deleted_at = NULL`.
+  - The product now moves cleanly into Inhyma's **Inactive** tab without being soft-deleted into trash.
+  - Reserved `event_type = "product.deleted"` strictly for actual product deletions (`DELETE /api/v1/masters/products/{id}`).
+- **Data Restoration:**
+  - Restored product "Test 2" (`58d7c317-dec4-4aa7-8e54-146657bf07ab`) in Inhyma DB: cleared `deleted_at = NULL` and set `status = 'INACTIVE'`, bringing Inhyma's Inactive tab to `Inactive (1)`.
+- **Automated End-to-End Verification:**
+  - Executed automated lifecycle test verifying:
+    1. **Create in Yinglima** $\rightarrow$ Immediately appears in Inhyma as **active**.
+    2. **Inactivate in Yinglima** $\rightarrow$ Immediately moves to Inhyma **inactive** tab (`deleted_at = NULL`).
+    3. **Re-activate in Yinglima** $\rightarrow$ Immediately moves back to Inhyma **active** tab.
+    4. **Delete in Yinglima** $\rightarrow$ Immediately soft-deleted and unlisted from Inhyma.
+
+## [Release 2026-10-22] — Product Master Edit Hardening & Supplier Foreign Key Resilience
+
+### 1. Product Master Edit Resilience & Dangling Supplier Reference Protection
+- **Root Cause & Resolution:**
+  - Resolved `500 INTERNAL_SERVER_ERROR` on `PATCH /api/v1/masters/products/{id}` occurring when editing products that had historical or deleted `supplier_id` values.
+  - Previously, `ProductService.update()` unconditionally called `_sync_supplier_link()` which triggered a PostgreSQL `ForeignKeyViolationError` on constraint `supplier_product_links_supplier_id_fkey`.
+  - Hardened `ProductService._validate_references()` to verify supplier existence in `suppliers` table and safely nullify non-existent references before persistence.
+  - Hardened `ProductService.update()` to include `supplier_id` in merged validation and sync back sanitization.
+  - Hardened `ProductService._sync_supplier_link()` with an existence check on `suppliers` and exception guard.
+  - Executed safe data cleanup across Yinglima DB (`mpvzjzunkiqchhhvxrza`), clearing dangling `supplier_id` references on 34 legacy products without impacting any valid operational data.
+
+### 2. Verified Real-time Status Sync to Inhyma
+- **Deactivation Lifecycle Verification:**
+  - Tested editing product `DAR-00017` ("LT 2 spares") in Yinglima with HSN `8422.a247`, Sub-Category "Packaging machine Spares", and setting status to `inactive`.
+  - Both Yinglima DB and Inhyma DB updated synchronously: Inhyma product `DAR-00017` status successfully transitioned to `INACTIVE`.
+
+## [Release 2026-10-22] — Cross-ERP Product Master Synchronization & Inhyma Organization Scoping
+
+### 1. Cross-ERP Product Synchronization Engine & Bulk Reconciliation
+- **Yinglima-to-Inhyma Product Master Sync:**
+  - Designed and executed end-to-end reconciliation script (`backend/scripts/sync_all_inhyma_products.py`) syncing catalog items assigned to Inhyma (`organization_id = 85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5`) from Yinglima DB (`mpvzjzunkiqchhhvxrza`) to Inhyma DB (`kkqxkgdrmvnnvptpjpmi`).
+  - Total Yinglima products assigned to Inhyma: **873 products**.
+  - **319 products newly created** in Inhyma ERP with complete technical specs, CBM, packaging weights, and explicit Inhyma organization assignment.
+  - **554 products updated** with reconciled foreign key dependencies (Categories, Sub-Categories, Brands, UOMs, and HSN/Taxes).
+  - Populated **873 rows** in `synced_entity_mappings` (`source_erp_id = 'yinglima'`, `entity_type = 'product'`) linking source and target entity UUIDs for future idempotent real-time event updates.
+
+### 2. Zero-Data-Loss Protection & Strict Organization Scoping
+- **Safe Isolation & Preservation of Non-Inhyma and Local Products:**
+  - Preserved Darsh Impex (652 items), FNB Solution (769 items), and native domestic Indian spare parts (`INH-xxxxx`, 935 items) in Inhyma ERP's database with zero deletions or schema corruption.
+  - Inhyma ERP Product Master frontend (`/product/list`) now strictly queries with `synced_from=yinglima&organization_id=85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5`, filtering out Darsh Impex, FNB Solution, and domestic `INH-` spare parts, so only the 873 products originating from Yinglima are displayed.
+  - **Strict One-Way Lifecycle:**
+    - Deactivating a product in Yinglima automatically deactivates it in Inhyma.
+    - Deleting a product in Yinglima soft-deletes it in Inhyma (`deleted_at` timestamp recorded).
+    - Inactivating or deleting directly in Inhyma NEVER affects Yinglima (zero reverse sync).
+
+### 3. Federation Credential & Outbox Hardening
+- **Mutual M2M Security:**
+  - Configured `FEDERATION_SERVICE_CREDENTIAL` in `Yinglima_ERP/backend/.env` matching Inhyma federation keys.
+  - Reset `peer_health_states` circuit breakers to `CLOSED`.
+  - Verified unit test suite: `tests/test_sync_product_to_inhyma.py` (2/2 tests passing, 100%).
+  - Verified frontend production builds: `npm run build` completed with 0 errors.
+
+## [Release 2026-10-22] — RBAC Permission Hardening: Sale Process, Stock Movements, Notification Rules & Position Matrix Integration
+
+### 1. New RBAC Permissions & Full Matrix Integration (155 -> 167 System Permissions)
+- **Sale Process (`sale_process.*` - 6 permissions):**
+  - Added `sale_process.view`, `sale_process.create`, `sale_process.update`, `sale_process.approve`, `sale_process.delete`, `sale_process.export`.
+  - Backend routes in `backend/app/sales/routes.py` secured with `@require_permission` decorators.
+  - Frontend navigation in `nav.ts` guarded with `permission: "sale_process.view"`.
+  - `SaleProcessList.tsx` action buttons (`+ Create Sale Process`, `Export`, `Edit Order`, `Delete`) wrapped with `<Can>` permission gates.
+- **Stock Movement (`stock_movement.*` - 4 permissions):**
+  - Added `stock_movement.view`, `stock_movement.create`, `stock_movement.cancel`, `stock_movement.delete`.
+  - Backend routes in `backend/app/stock/routes.py` secured with `@require_permission` decorators.
+  - Frontend navigation in `nav.ts` guarded with `permission: "stock_movement.view"`.
+  - `StockMovements.tsx` action buttons (`+ New Inward Entry`, `+ New Outward Entry`, `Cancel`, `Delete`) wrapped with `<Can>` permission gates.
+- **Notification Rules (`notification_settings.*` - 2 permissions):**
+  - Added dedicated `notification_settings.view` and `notification_settings.manage` permissions (eliminating previous reuse of `user.view`).
+  - Backend routes in `backend/app/notifications/routes.py` secured with `@require_permission` decorators.
+  - Frontend navigation in `nav.ts` guarded with `permission: "notification_settings.view"`.
+  - `NotificationSettings.tsx` toggle and edit buttons disabled/hidden for users without `notification_settings.manage`.
+- **Positions & Designations (`position.*`):**
+  - Added friendly display name and module category mapping in `permissionLabels.ts` (`Positions & Designations`), ensuring proper rendering in `/rbac` and permission matrices.
+- **Zero-Latency In-Memory Architecture Guarantee:**
+  - Permissions are cached in RAM on the backend via Redis/MemoryCache and hydrated on frontend session creation as a JS `Set`.
+  - All permission evaluations (`hasPermission()`, `<Can>`) execute in $O(1)$ (< 0.001ms) with zero extra network round-trips.
+
+## [Release 2026-10-22] — Global Custom In-App Confirmation Modal: Elimination of Native Browser window.confirm()
+
+### 1. Global In-App Confirm Dialog Architecture (`frontend/src/lib/confirm.tsx`)
+- **Elimination of Unstyled Browser "Black Box" Popups:**
+  - Completely replaced the browser's native `window.confirm()` dialog (which rendered as a dark/black floating prompt saying `localhost:5173 says` on Windows/Chrome dark mode) with a unified, modern in-app confirmation modal.
+  - Implemented `ConfirmDialogProvider` and `useConfirm()` hook mounted at the application root (`main.tsx`).
+  - Modal features:
+    - Clean white card dialog (`#ffffff`, `borderRadius: 16px`, smooth backdrop blur overlay `rgba(15, 23, 42, 0.55)`).
+    - Top icon badge: Circular soft-red icon badge (`#fee2e2`, `#dc2626`) with a clean trash/delete SVG icon (or amber warning icon for warnings).
+    - Title: Bold modal heading (`"Delete Confirmation"`, `"Delete Product Item"`, etc.).
+    - Item highlight pill: Clean item name/code tag (`#f1f5f9`, border `#e2e8f0`, bold text `#334155`).
+    - Action buttons: Styled Cancel button (`#ffffff` / `#475569`, border `#cbd5e1`) and prominent Danger button (`#dc2626`, bold white text `#ffffff`).
+    - Keyboard navigation: `Escape` key dismisses, `Enter` key confirms.
+
+### 2. Comprehensive ERP Module Rollout
+- **Inquiries (`Inquiries.tsx`):**
+  - Consignment deletion, bulk consignment deletion, quotation removal, and product item deletion (the exact screen reported by user) now trigger the custom white confirmation dialog.
+- **Local Purchases (`LocalPurchases.tsx`):**
+  - Purchase invoice deletion triggers the custom modal with invoice number highlight.
+- **Sale Process (`SaleProcessList.tsx`):**
+  - Sale order deletion triggers the custom modal with order number highlight.
+- **Stock Movements (`StockMovements.tsx`):**
+  - Movement cancellation and permanent deletion trigger the custom modal with movement number highlight.
+- **Product Prices (`ProductPrices.tsx`):**
+  - Price quote removal triggers the custom modal with supplier name highlight.
+- **Product Gallery (`ProductGallery.tsx`):**
+  - Broken media deletion, product image deletion, and supplier visit photo deletion trigger the custom modal.
+- **Master Data Pages (`MasterPage.tsx`):**
+  - All 13 Master entities (Products Master, Categories, Subcategories, Brands, HSN, UOM, Countries, States, Cities, Currencies, Company List, Buyer Types, Supplier Types) now use the custom modal for row and bulk deletion.
+- **Suppliers & Buyers (`Suppliers.tsx`, `Buyers.tsx`):**
+  - Contact person deletion, supplier/buyer deletion, and bulk actions (delete, deactivate) use the custom modal.
+- **Planning (`Planning.tsx`):**
+  - Sheet deletion and column group deletion use the custom modal.
+- **Trash & User Management (`Trash.tsx`, `Users.tsx`, `Rbac.tsx`):**
+  - Permanent deletion, empty trash, account actions, bulk deactivation, and department deletion use the custom modal.
+
+## [Release 2026-10-22] — Global UI Button Standardization: Orange Imp / Exp Buttons & Unified Filter Funnel Headers
+
+### 1. Global Standardized Vibrant Orange Export & Import Buttons (`#f59e0b`)
+- **Visual Harmonization:**
+  - Standardized all list header Export and Import buttons across the ERP to match the vibrant orange standard established in **Products Master** (`#f59e0b`, white bold text `#ffffff`, `fontWeight: 700`, `borderRadius: 6px`, `border: none`, `boxShadow: 0 2px 4px rgba(245, 158, 11, 0.25)`).
+  - Updated `LocalPurchases.tsx`: replaced old white button (`📥 Export ▼`) with the standardized orange `"Export ▾"` button (`btn-imp-exp`).
+  - Updated `ProductPrices.tsx`: replaced old white outline button (`📥 Export ▼`) with the standardized orange `"Export ▾"` button (`btn-imp-exp`).
+  - Re-aligned `SaleProcessList.tsx` and all master/entity list pages via unified `btn-imp-exp` CSS class in `style.css`.
+
+### 2. Global Unified Top Filter Funnel Button (Symbol & Color)
+- **Funnel SVG & State Standard:**
+  - Standardized the top filter toggle button across all ERP modules to the compact Funnel SVG icon button (`btn-header-filter`).
+  - Inactive / Default State: dark slate background (`#475569`) with white SVG funnel icon (`<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>`), `padding: 8px 12px`, `borderRadius: 6px`, `border: none`.
+  - Active / Filter Open State: primary blue background (`#0061f2`) with active filter count badge (`#ef4444`).
+  - Updated `LocalPurchases.tsx`: replaced wide `"Filters"` text button with the compact Funnel icon button.
+  - Updated `ProductPrices.tsx`: adjusted button padding and classes to match standard height.
+  - Updated `Buyers.tsx`: aligned active background from `#4f46e5` to unified `#0061f2`.
+### 3. Product Prices: Removal of Redundant "Search" Button
+- **Streamlined Live Reactive Filtering:**
+  - Removed the redundant orange `"Search"` button from the expandable filter drawer in `ProductPrices.tsx`.
+  - All filter dropdowns (Category, Sub Category, Brand, Pricing Status) are fully reactive and trigger `fetchPrices` automatically on change via the dependency hook.
+  - Retained the clean `"Reset"` button to clear all active dropdown filters, search terms, and reset back to page 1.
+
 ## [Release 2026-10-22] — Stock Movements: Clean 0-Item Empty-State Lifecycle, Ghost Row Elimination & Cascading Clear (Inward & Outward)
 
 ### 1. Elimination of Ghost 1-Item Table Rows
@@ -269,6 +527,39 @@
   - When focusing or clicking on an unchanged selection (`value !== null && inputValue.trim() === label.trim()`), the dropdown now automatically queries with empty string `""` to display all available options, highlighting the current selection with `✓`.
 - **Product Fetcher Composite Label Sanitization ([`Inquiries.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/Inquiries.tsx)):**
   - Updated `productFetcher` in both Quick Inquiry drawer and Inquiry edit modal to detect and extract code from composite labels containing parentheses `(CODE)` or dashes (`CODE — Name`), ensuring typed/pasted composite product strings match their respective product code or name immediately.
+
+## [Release 2026-10-21] — Automated One-Way Product Master Cross-ERP Synchronization (Yinglima -> Inhyma)
+
+### 1. Automated One-Way Product Master Sync (`Organization = Inhyma`)
+- **Business Rule & Trigger ([`app/masters/products/sync_inhyma.py`](file:///c:/Users/Inhyma%20Solutions/OneDrive/Desktop/ERP/Yinglima_ERP/backend/app/masters/products/sync_inhyma.py)):**
+  - Implemented automatic cross-ERP synchronization to Inhyma's Product Master whenever a product is created or edited in Yinglima with `Organization = Inhyma` (supports both single `organization_id` and multi-organization array `organization_ids`).
+  - **Strict One-Way Policy:** Data sync is strictly unidirectional ($Yinglima \rightarrow Inhyma$). Products created, edited, or deleted in Inhyma are never synced back to Yinglima.
+  - Detects Inhyma through known instance UUID (`85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5`), slug matching, and `master_companies` name/code matching (`is_inhyma_organization`).
+  - Automatically syncs updates if a product was previously synchronized to Inhyma, even if the organization field is preserved or updated.
+
+### 2. Deactivation & Soft-Delete Cascade
+- **One-Way Status Synchronization:**
+  - When a product is deactivated in Yinglima (`POST /masters/products/{id}/deactivate`), the deactivation event is automatically dispatched to Inhyma, marking the corresponding Inhyma product as inactive (`is_active=False`, `status="inactive"`).
+  - When a product is deleted/soft-deleted in Yinglima (`DELETE /masters/products/{id}`), Inhyma cascades the archival without hard-deleting relational history.
+  - **No Vice-Versa:** Deactivation or deletion in Inhyma's Product Master does NOT alter or deactivate the product in Yinglima.
+
+### 3. Multi-Tier Resilience & Transactional Fallbacks
+- **Non-Blocking Architecture:**
+  - Sync failures or network timeouts in communicating with Inhyma never fail or roll back the local Yinglima product creation or update transaction.
+- **Immediate Direct HTTP Delivery + Durable Outbox Queue Fallback:**
+  - Upon committing the product locally, Yinglima publishes an integration outbox event (`aggregate_type="product"`) and triggers an immediate direct HTTP POST to Inhyma's `/api/v1/integration/events` endpoint using mutual peer service credentials.
+  - If Inhyma is unreachable, sleeping, or experiencing latency, the delivery is automatically queued in `integration_outbox_deliveries` and retried with exponential backoff by the async queue worker.
+
+### 4. Classification Natural Key Translation & Inhyma Dimension Harmonization
+- **Natural Key Resolution:**
+  - Assembles product payloads with natural business keys (`category_name`, `category_code`, `sub_category_name`, `sub_category_code`, `brand_name`, `brand_code`, `uom_code`, `hsn_code`) rather than local database foreign key UUIDs.
+  - Automatically translates packaging dimensions (`length_cm`, `width_cm`, `height_cm`, `packaging_unit_cbm`) and enforces positive gross weight constraints required by Inhyma's database.
+
+### 5. Type Safety & Diagnostic Hardening
+- Resolved linter and static type analysis warnings:
+  - Corrected model import to `HsnCode` from `app.masters.hsn.models`.
+  - Type-narrowed dimensions (`raw_len`, `raw_width`, `raw_height`) with explicit `is not None` guards before converting to `float`, preventing `float | None` type mismatch warnings.
+  - Cleaned up string conversions in `organization_ids` iteration to prevent redundant `str()` call warnings on string elements.
 
 ---
 

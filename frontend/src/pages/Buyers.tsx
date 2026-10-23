@@ -32,6 +32,7 @@ import { ImpExpDropdown, BulkActionsDropdown, ImportSummaryPanel, downloadSample
 import { apiDelete, apiGet, apiPatch, apiPost, downloadExport, toQueryString } from "@/lib/api";
 import { useLookup, useLookupNames } from "@/lib/lookups";
 import { usePendingGuard, useModalHistorySync, useAuth } from "@/lib/hooks";
+import { useConfirm } from "@/lib/confirm";
 import { handleFormEnterKeyNavigation } from "@/lib/formUtils";
 import { useLiveConnectionStatus, useLiveModule } from "@/lib/live/useLive";
 import { useLiveList } from "@/lib/live/useLiveList";
@@ -326,6 +327,7 @@ function BuyerSkeletonRows({
 
 export function BuyersPage() {
   const { hasPermission } = useAuth();
+  const confirm = useConfirm();
   const canCreate = hasPermission("buyer.create");
   const canUpdate = hasPermission("buyer.update");
   const canDelete = hasPermission("buyer.delete");
@@ -1321,7 +1323,14 @@ export function BuyersPage() {
       return;
     }
 
-    if (!window.confirm(`Delete buyer "${buyer.company_name}"? This action cannot be undone.`)) return;
+    const confirmed = await confirm({
+      title: "Delete Buyer Profile",
+      message: `Are you sure you want to delete buyer "${buyer.company_name}"? This action cannot be undone.`,
+      itemName: buyer.company_name,
+      confirmLabel: "Delete Buyer",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     await guardRowAction(`delete:${buyer.id}`, async () => {
       try {
         await apiDelete(`/buyers/${buyer.id}`);
@@ -1477,7 +1486,13 @@ export function BuyersPage() {
 
   async function handleDeleteContact(contactId: string) {
     if (!editingId) return;
-    if (!window.confirm("Remove this contact person?")) return;
+    const confirmed = await confirm({
+      title: "Remove Contact Person",
+      message: "Are you sure you want to remove this contact person? This action cannot be undone.",
+      confirmLabel: "Remove Contact",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     await guardRowAction(`delete-contact:${contactId}`, async () => {
       try {
         await apiDelete(`/buyers/${editingId}/contacts/${contactId}`);
@@ -1491,12 +1506,25 @@ export function BuyersPage() {
   /* Bulk Actions Handlers */
   async function handleBulkActivate() {
     if (!selectedIds.length) return;
+    const idsToActivate = [...selectedIds];
+    const previousRows = [...rows];
+
+    // 1. INSTANT 0ms OPTIMISTIC CUT-OFF
+    setSelectedIds([]);
+    if (statusTab === "inactive") {
+      setRows((prev) => prev.filter((r) => !idsToActivate.includes(r.id)));
+    } else {
+      setRows((prev) => prev.map((r) => (idsToActivate.includes(r.id) ? { ...r, is_active: true } : r)));
+    }
+
+    // 2. Server persistence
     await guardRowAction("bulk-activate", async () => {
       try {
-        await Promise.all(selectedIds.map((id) => apiPost(`/buyers/${id}/activate`)));
-        setRows((prev) => prev.map((r) => (selectedIds.includes(r.id) ? { ...r, is_active: true } : r)));
-        setSelectedIds([]);
+        await Promise.all(idsToActivate.map((id) => apiPost(`/buyers/${id}/activate`)));
+        reload();
       } catch (err) {
+        setRows(previousRows);
+        setSelectedIds(idsToActivate);
         setError(err);
       }
     });
@@ -1504,12 +1532,25 @@ export function BuyersPage() {
 
   async function handleBulkDeactivate() {
     if (!selectedIds.length) return;
+    const idsToDeactivate = [...selectedIds];
+    const previousRows = [...rows];
+
+    // 1. INSTANT 0ms OPTIMISTIC CUT-OFF
+    setSelectedIds([]);
+    if (statusTab === "active") {
+      setRows((prev) => prev.filter((r) => !idsToDeactivate.includes(r.id)));
+    } else {
+      setRows((prev) => prev.map((r) => (idsToDeactivate.includes(r.id) ? { ...r, is_active: false } : r)));
+    }
+
+    // 2. Server persistence
     await guardRowAction("bulk-deactivate", async () => {
       try {
-        await Promise.all(selectedIds.map((id) => apiPost(`/buyers/${id}/deactivate`)));
-        setRows((prev) => prev.map((r) => (selectedIds.includes(r.id) ? { ...r, is_active: false } : r)));
-        setSelectedIds([]);
+        await Promise.all(idsToDeactivate.map((id) => apiPost(`/buyers/${id}/deactivate`)));
+        reload();
       } catch (err) {
+        setRows(previousRows);
+        setSelectedIds(idsToDeactivate);
         setError(err);
       }
     });
@@ -1529,7 +1570,13 @@ export function BuyersPage() {
       return;
     }
 
-    if (!window.confirm(`Delete ${selectedIds.length} selected buyer(s)? This action cannot be undone.`)) return;
+    const confirmed = await confirm({
+      title: "Delete Selected Buyers",
+      message: `Delete ${selectedIds.length} selected buyer(s)? This action cannot be undone.`,
+      confirmLabel: "Delete Selected",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     await guardRowAction("bulk-delete", async () => {
       try {
         await Promise.all(selectedIds.map((id) => apiDelete(`/buyers/${id}`)));
@@ -3120,24 +3167,26 @@ export function BuyersPage() {
 
           {/* Action Header Button Bar matching Supplier Master */}
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            {/* Funnel Filter Icon Button */}
+            {/* Funnel Filter Icon Button (Matching Products Master) */}
             <button
               type="button"
+              className={`btn btn-header-filter ${isFilterPanelOpen ? "active" : ""}`}
               onClick={() => setIsFilterPanelOpen((v) => !v)}
               style={{
                 padding: "8px 12px",
                 borderRadius: "6px",
-                background: isFilterPanelOpen ? "#4f46e5" : "#475569",
+                background: isFilterPanelOpen ? "#0061f2" : "#475569",
                 color: "#ffffff",
                 border: "none",
                 cursor: "pointer",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
               }}
               title="Toggle Filter Options"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
               </svg>
             </button>
