@@ -1341,8 +1341,12 @@ Manage complete vendor team directory:
 - **Purpose:** Interactive spreadsheet-like shipment planning workbook for branch logistics, dynamic column configuration, container CBM optimization, and audit logging.
 
 ### 14.1. Workbook Features & Sheet Architecture
-1. **Branch Sheet Tabs:**
+1. **Branch Sheet Tabs & Universal Entity Filtering:**
    - Multi-tab navigation across enterprise branches (e.g. `Mum Branch`, `MP Branch`, `GJ Branch`, `CN Central`).
+   - 🏢 / 👤 **Searchable Entity Selector (`Entity: All Entities (Organizations & Buyers)`):**
+     - Allows selecting a specific internal organization (`Inhyma`, `One Stop`, `F&B`, etc.) or buyer (`Prathamesh Packaging`, `Om Packaging`, `Darsh Impex`, etc.).
+     - Selecting **`All Entities (Organizations & Buyers)`** shows tabs for all 12+ sheets across the entire company.
+     - **Sheet Tab Navigation Hardening:** In `All Entities` mode, clicking any tab (e.g. `One Stop`, `Mumbai`, `Chennai`, `dubaidarsh`) directly opens that sheet, updates the active tab state, and loads its grid without resetting or snapping back to Inhyma.
    - ➕ **`+ Add New Sheet` Button & Modal:**
      - **Sheet Name** (*Required*): e.g. `TN Branch`.
      - **Associated Branch / Organization**: Dropdown selector.

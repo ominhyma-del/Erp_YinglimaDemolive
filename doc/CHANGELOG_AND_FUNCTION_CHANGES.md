@@ -3,9 +3,22 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
-## [Release 2026-10-23] — Local Purchase Consignment Supplier Filtering & Multi-Vendor Container Isolation
+## [Release 2026-10-23] — Local Purchase Consignment Supplier Filtering & Shipment Planning All Entities Navigation Fix
 
-### 1. Supplier-Scoped Consignment Item Extraction
+### 1. Shipment Planning "All Entities" Sheet Navigation & Tab Switching Hardening
+- **Business Need & Issue:**
+  - In Shipment Planning (`/planning`), selecting `Entity: All Entities (Organizations & Buyers)` displays all 12 sheets across all organizations and buyers (`One Stop`, `Inhyma Mumbai`, `Mumbai`, `Chennai`, `dubaidarsh`, `Om Packaging`, `Prathamesh Packaging`, etc.).
+  - Clicking any non-Inhyma sheet tab (e.g. `One Stop` or `Mumbai`) failed to load that sheet and immediately snapped back to `Inhyma Mumbai`.
+- **Root Cause:**
+  - In `Planning.tsx`, when `All Entities` mode (`tabOrganizationFilterId === null`) was active, updating URL query params via `setSheetUrlParam` triggered a background `useEffect` that saw `tabOrganizationFilterId === null` as uninitialized and forcefully set it back to `inhymaOrg.id`.
+  - The sheet reconciliation effect then noticed that the clicked sheet was not in the Inhyma sheets list, immediately resetting `activeSheetId` back to `Inhyma Mumbai`.
+- **Frontend Resolution (`Planning.tsx`):**
+  - Added `hasInitializedOrgRef` to ensure initial default to Inhyma happens strictly once on initial mount if and only if no specific sheet or organization was requested.
+  - When in `All Entities` mode (`tabOrganizationFilterId === null`), clicking any sheet tab preserves `null` so all tabs remain visible and the clicked sheet loads without interference.
+  - Updated `setSheetUrlParam` and `SearchableEntityDropdown` `onChange` to clear `?org=` from the URL when `All Entities` is chosen.
+  - Verified via `npx tsc --noEmit` (exit code 0).
+
+### 2. Supplier-Scoped Consignment Item Extraction
 - **Business Need & Issue:**
   - Shipment Planning consignments (e.g. shipping container `Mum 48`) contain planned items manufactured across 10+ different manufacturing vendors.
   - Selecting a consignment previously loaded all items from every vendor into the local purchase order table, leaving products from unrelated suppliers inside single-vendor invoices.
