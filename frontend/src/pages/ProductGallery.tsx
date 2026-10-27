@@ -411,6 +411,7 @@ export function ProductGalleryPage() {
     try {
       const prodParams: Record<string, string> = {
         has_images: "true",
+        status: "active",
         page_size: "100",
         sort_by: "created_at",
         sort_order: "desc",
@@ -424,12 +425,12 @@ export function ProductGalleryPage() {
       let prodItems = Array.isArray(prodRes.data) ? prodRes.data : (prodRes.data?.items || []);
       // Fallback: if has_images didn't return any, fetch standard page of 60 products
       if (prodItems.length === 0 && !categoryFilter && !subCategoryFilter && !brandFilter) {
-        const fallbackRes = await apiGet<Product[] | { items: Product[] }>("/masters/products?page=1&page_size=60&sort_order=desc");
+        const fallbackRes = await apiGet<Product[] | { items: Product[] }>("/masters/products?page=1&page_size=60&sort_order=desc&status=active");
         prodItems = Array.isArray(fallbackRes.data) ? fallbackRes.data : (fallbackRes.data?.items || []);
       }
       setProducts(prodItems);
 
-      const suppRes = await apiGet<Supplier[] | { items: Supplier[] }>("/suppliers?page=1&page_size=100");
+      const suppRes = await apiGet<Supplier[] | { items: Supplier[] }>("/suppliers?page=1&page_size=100&is_active=true");
       const suppItems = Array.isArray(suppRes.data) ? suppRes.data : (suppRes.data?.items || []);
       setSuppliers(suppItems);
 

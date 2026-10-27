@@ -3,6 +3,98 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-27 Part 2] — Global Active-Only Fetching Enforcement & Supplier Inactive Tab Cache Fix
+
+### 1. Supplier Inactive Tab Fix (`routes.py`, `service.py`, `Suppliers.tsx`)
+- **Backend Cache Key Differentiation (`backend/app/suppliers/routes.py`):**
+  - Updated `/api/v1/suppliers` list query cache key to include exact filter parameters (`filters_repr = ":".join(f"{k}={v}" for k, v in sorted(query.filters.exact.items()))`).
+  - Previously, `cache_key` omitted `is_active`, so navigating from the Active tab to the Inactive tab returned the cached Active suppliers (44 items) instead of querying the 1 Inactive supplier (`LT1`).
+  - Added safe awaitable invalidation `delete_namespace("suppliers")` in `SupplierService._invalidate_cache` so all paginated supplier cache entries are wiped upon any mutation or activation/deactivation.
+- **Frontend Tab Transition Fix (`Suppliers.tsx`):**
+  - Updated `supplierListCache` fallback so the default active cache is never used when `statusTab === "inactive"`.
+  - Added instant row clearing (`setRows([])`) upon clicking between the Active and Inactive tabs to eliminate UI flashing.
+
+### 2. Universal Two-Way Status <-> is_active Alias in `BaseRepository` (`base_repository.py`)
+- **Automatic Schema Mapping Across All Models:**
+  - Implemented universal two-way translation in `BaseRepository._apply_dynamic_filters`:
+    - When `status` query filter is received on a model with boolean `is_active` (`Buyer`, `Supplier`), it dynamically resolves to `is_active = True/False`.
+    - When `is_active` query filter is received on a model with text `status` (`Product`, `ProductCategory`, `Brand`, `City`, `State`, etc.), it dynamically resolves to `status = 'active'/'inactive'`.
+  - Guarantees that generic lookup hooks and external callers requesting `?status=active` or `?is_active=true` always filter accurately regardless of the underlying column type.
+
+### 3. Comprehensive Active-Only Enforcement in Lookups & Dropdowns Across Modules
+- **`useLookup` Query Normalization (`frontend/src/lib/lookups.ts`):**
+  - Normalizes `apiBase` URLs containing existing query parameters (e.g. `/buyers?page_size=500`), cleanly merging parameters and preventing malformed URLs with double question marks (`??`).
+  - Enforces `status=active` by default across all lookup requests.
+- **Repository `list_all` Default to `active_only=True`:**
+  - Standardized `list_all(active_only=True)` across `ProductCategoryRepository`, `ProductSubCategoryRepository`, `BrandRepository`, `HsnRepository`, `UomRepository`, `CountryRepository`, `StateRepository`, `CityRepository`, `CurrencyRepository`, `MasterCompanyRepository`, `SupplierTypeRepository`, and `BuyerTypeRepository`.
+  - Inactive categories, brands, or cities can no longer leak into cached dropdowns or lookup APIs.
+- **Specific Module Fetch Enforcements:**
+  - **Inquiries (`Inquiries.tsx`):** Buyer lookup in creation modal and typeahead search updated to strictly enforce `status=active`.
+  - **Shipment Planning (`Planning.tsx`):** Row-link record fetcher updated to enforce `status=active`.
+  - **Sales Process (`SaleProcessForm.tsx`):** Spare products search updated to enforce `status=active`.
+  - **Product Prices (`ProductPrices.tsx` & repo):** Product prices catalog and supplier quotes lookup enforce `status='active'` and `is_active=true AND deleted_at IS NULL`.
+  - **Product Gallery (`ProductGallery.tsx`):** Enforces `status=active` and `is_active=true` for both products and supplier profiles.
+
+## [Release 2026-10-27] — Product Master Top Filter Search Button Removal & Reactive Filtering
+
+### 1. Product Master Top Filter UI Clean-Up (`Products.tsx` & `MasterPage.tsx`)
+- **Search Button Omission:**
+  - Added `hideFilterSearchButton` prop to `MasterPageProps` and configured `hideFilterSearchButton={true}` in `Products.tsx`.
+  - Removed the redundant orange `[Search]` button from the top filter bar above the products table.
+  - Category, Sub-Category, and Brand dropdown selections dynamically update `extraFilters`, triggering automatic server-side re-querying reactively without requiring an extra click on a search button.
+- **Top Filter Reset Callback (`onResetFilters`):**
+  - Added `onResetFilters` prop to `MasterPageProps`.
+  - In `Products.tsx`, clicking `[Reset]` now clears Category, Sub Category, and Brand state back to "All" alongside the search text input and resets pagination to page 1.
+
+### 2. Product Prices: Separation of Lowest Price from Preferred Supplier & 100% Manual Preference (`ProductPrices.tsx`)
+- **Strict Separation Between Lowest Price & Preferred Supplier:**
+  - Resolved issue where entering or saving a supplier quote with the lowest price would automatically designate that supplier as the company's Preferred Supplier (`⭐ Preferred`).
+  - Enforced business rule: **Lowest Price is strictly a financial metric; Preferred Supplier is 100% an operational/executive choice**.
+  - Lowest price quotes are displayed with the green **`LOWEST`** badge in the comparison sub-table and populated under "Best Price (Quote)" without attaching `⭐ Preferred`.
+- **Safe Defaults When Adding Quotes:**
+  - In the `+ Assign` / `+ Quote` modal, the `⭐ Set as Preferred Supplier for this product` checkbox now defaults to **un-checked (`false`)** instead of `true`.
+  - Added explicit guidance note in the modal explaining that quotes only record pricing and do not change supplier preference unless explicitly checked.
+- **Manual Preferred Supplier Toggling:**
+  - Clicking **`⭐ Set Preferred`** in the subtable manually sets the preferred supplier.
+  - Clicking **`⭐ Preferred (Unset)`** unsets the preferred supplier and returns the SKU to neutral manual mode.
+  - Updated notification to `"Preferred supplier removed (manual mode)"`.
+  - Added `productPriceListCache.clear()` on all quote creations, updates, deletions, and preference toggles to ensure immediate synchronization across table views.
+
+### 3. Supplier Active vs Inactive Filtering Parity & Lightweight Lookup Migration (`SupplierRepository`, `LocalPurchaseForm.tsx`, `LocalPurchases.tsx`)
+- **Backend `status="active"` / `"inactive"` Filter Alias (`SupplierRepository._apply_dynamic_filters`):**
+  - Mapped incoming `status="active"` and `status="inactive"` query parameters to `Supplier.is_active` (`True` or `False`).
+  - Previously, `Supplier` model stored state in `is_active` boolean while generic frontend lookups requested `?status=active`. Since `Supplier` lacked a `status` column, the filter was ignored and returned all 45 suppliers (including inactive suppliers like `LT1`).
+  - With the mapping in place, `/suppliers?status=active` returns only the 44 active suppliers, correctly omitting inactive vendors.
+- **Lightweight Supplier Lookup Optimization (`/api/v1/suppliers/lookup`):**
+  - Upgraded `list_suppliers_lookup` in `backend/app/suppliers/service.py` to return `{ id, company_name, brand_description, supplier_type }`, cached in memory via `CacheManager`.
+  - Added optional `search: str | None = None` support for sub-millisecond in-memory typeahead filtering.
+  - Replaced bulky `/suppliers` queries in `LocalPurchaseForm.tsx` and `LocalPurchases.tsx` with `/suppliers/lookup`.
+  - Payload dropped from ~25 KB to only **4.4 KB** (an 82% reduction), ensuring zero lag as the supplier base grows into the thousands.
+- **Suppliers Page Tab Clarification:**
+  - On `/suppliers`, the master list defaults to the **"Active Suppliers"** tab (44 vendors). Inactive suppliers (such as `LT1`) reside in the **"Inactive Suppliers"** tab (1 vendor), where they can be reviewed or reactivated.
+
+### 4. Shipment Planning Buyer & Entity Switching & Sheet Creation Fix (`Planning.tsx`)
+- **Resolved Entity Selection Bounce-Back & Stuck Sheet:**
+  - Fixed bug where selecting a buyer with no existing planning sheets left the previous entity's sheet active and retained `?sheet=...` in the URL, which caused URL synchronization hooks to bounce the dropdown back to the previous entity.
+  - Implemented `handleEntityChange` to immediately clear `activeSheetId`, null out the previous grid, and strip stale `sheet` and `sheet_id` parameters from the URL when an entity without sheets is chosen.
+  - Added support for `?buyer=<id>` in the URL alongside `?org=<name>`, enabling full deep-linking and browser reload retention for buyers.
+- **Dedicated Empty State Card & 1-Click Sheet Creation:**
+  - Added an empty state card with icon, clear title (*"No Planning Sheet Found for [Entity Name]"*), and a direct action button: **`[ + Create Planning Sheet for [Entity Name] ]`**.
+  - Clicking this button automatically opens the **Add Sheet (Branch Tab)** modal with **Buyer Profile** pre-selected, the target buyer pre-selected, and the branch location initialized to `"Main"`.
+
+### 3. Shipment Planning Status Picker Double-Click Prevention & History Deduplication (`Planning.tsx` & `planning/service.py`)
+- **Prevent Rapid Double-Click Duplicate Logs:**
+  - **Frontend Button Lockout (`StatusPicker`):** Added `submitting` state to `StatusPicker`. Immediately upon clicking any status color or tag, all buttons in the popover are disabled, preventing second clicks within ~50ms from firing duplicate network mutations.
+  - **Synchronous Popover Closure:** Popover closes immediately (`setStatusPicker(null)`) synchronously upon selection rather than awaiting network completion.
+  - **Per-Cell In-Flight Request Guard (`pendingStatusCellsRef`):** Added a ref set tracking active `${rowId}:${columnId}` status updates. Any duplicate status request for the same cell is ignored while the first is in-flight.
+- **Backend Service Debounce & Early Return (`set_cell_status` in `service.py`):**
+  - **No-Op Early Exit:** If the requested `status_color` and `custom_status_tag_id` already match the cell's current status, the endpoint returns immediately without performing database writes, change log creation, or audit event generation.
+  - **3-Second Debounce Window:** Added a lookback check in `change_log_repository.list_for_cell` to verify whether an identical `CELL_STATUS_CHANGED` event for that cell was logged within the preceding 3 seconds. Prevents database-level race condition double writes from concurrent network calls.
+- **History Viewer Deduplication (`get_mum_column_status_history_for_row` & `groupedEntries`):**
+  - **Server-Side History Deduplication:** Added `last_seen_by_col` tracking in `get_mum_column_status_history_for_row`. Consecutive identical status changes or quantity value updates for the same column are deduplicated automatically so historical rapid clicks never appear as duplicate entries.
+  - **Client-Side Deduplication in Popover (`groupedEntries`):** Added deduplication pass in `MumHistoryPopover` filtering out any accidental identical status or quantity entries occurring within 5 seconds of each other.
+  - **Database Cleanup:** Purged historical accidental duplicate change log records in PostgreSQL.
+
 ## [Release 2026-10-26] — System-Wide 0ms Instant Loading, SWR Caching & Zero-Lag UI Across All Modules
 
 ### 1. Universal Master Data SWR Cache & Instant Edit Modal (`masterListCache.ts` & `MasterPage.tsx`)

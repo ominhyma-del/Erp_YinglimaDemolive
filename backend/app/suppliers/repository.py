@@ -81,6 +81,16 @@ class SupplierRepository(BaseRepository[Supplier]):
         """Exclude soft-deleted suppliers, same as the generic BaseRepository behavior."""
         return super()._base_select()
 
+    def _apply_dynamic_filters(self, stmt: Select, filters: Any) -> Select:
+        """Apply dynamic filters with alias mapping for status -> is_active."""
+        if hasattr(filters, "exact") and "status" in filters.exact:
+            val = str(filters.exact["status"]).lower().strip()
+            if val in ("active", "true", "1"):
+                stmt = stmt.where(Supplier.is_active.is_(True))
+            elif val in ("inactive", "false", "0"):
+                stmt = stmt.where(Supplier.is_active.is_(False))
+        return super()._apply_dynamic_filters(stmt, filters)
+
     def _apply_search(self, stmt: Select, term: str | None) -> Select:
         """
         Comprehensive search matching anything visible on the supplier row / details:

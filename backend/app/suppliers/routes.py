@@ -235,7 +235,8 @@ async def list_suppliers(
     """
     List suppliers, with search/sort/filter/pagination.
     """
-    cache_key = f"suppliers:{query.page.page}:{query.page.page_size}:{query.search.normalized or ''}:{category_id}:{sub_category_id}:{product_id}"
+    filters_repr = ":".join(f"{k}={v}" for k, v in sorted(query.filters.exact.items()))
+    cache_key = f"suppliers:{query.page.page}:{query.page.page_size}:{query.search.normalized or ''}:{filters_repr}:{category_id}:{sub_category_id}:{product_id}"
     cached = await cache_manager.get(cache_key)
     if cached is not None:
         return build_success_response(data=cached["data"], request_id=request.state.request_id, meta=cached["meta"])
@@ -328,11 +329,12 @@ async def upload_supplier_media(
 @router.get("/lookup", summary="Lightweight active suppliers lookup")
 async def get_suppliers_lookup(
     request: Request,
+    search: str | None = None,
     service: SupplierService = Depends(get_supplier_service),
     _current_user: CurrentUser = Depends(require_permission("supplier.view")),
 ) -> dict:
-    """Return lightweight list of active suppliers {id, company_name}."""
-    suppliers = await service.list_suppliers_lookup()
+    """Return lightweight list of active suppliers {id, company_name, brand_description, supplier_type}."""
+    suppliers = await service.list_suppliers_lookup(search=search)
     return build_success_response(data=suppliers, request_id=request.state.request_id)
 
 

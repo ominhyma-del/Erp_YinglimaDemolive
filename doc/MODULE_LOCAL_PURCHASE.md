@@ -32,6 +32,14 @@ The **Local Purchase** module allows China operations to record domestic procure
 
 ## 3. What Was Changed / Updated
 
+### Release 2026-10-27: Lightweight Supplier Dropdown Migration (`/suppliers/lookup`)
+1. **Lightweight Dropdown Lookup Integration:**
+   - Switched `supplierLookup` in `LocalPurchaseForm.tsx` and `LocalPurchases.tsx` to use the dedicated `GET /api/v1/suppliers/lookup` endpoint.
+   - Drastically reduced response payload from ~25 KB (or up to 3 MB at scale) to only **4.43 KB** (an 82% reduction).
+   - In-memory cache returns active suppliers instantaneously in **< 1 ms** without loading heavy relations (contacts, addresses, tax IDs) into procurement forms.
+2. **Active Supplier Parity:**
+   - By leveraging `/suppliers/lookup`, inactive suppliers (e.g. `LT1`) are omitted at the database query level (`WHERE is_active = true`), preventing inactive vendors from being mistakenly selected.
+
 ### Release 2026-10-26: Dynamic VAT % & Removal of 13.0% Fallback
 1. **Removed 13.0% Fallback Across Models, Schemas & Services:**
    - Changed `LocalPurchaseItem.vat_rate` model default from `13.0` to `0.0`.

@@ -7411,7 +7411,7 @@ function QuickInquiryDrawer({
     (async () => {
       try {
         const [compRes, uomRes] = await Promise.all([
-          apiGet<any>("/buyers?page_size=200"),
+          apiGet<any>("/buyers?page_size=200&status=active"),
           apiGet<any[]>("/masters/uom"),
         ]);
         const buyersList = Array.isArray(compRes.data) ? compRes.data : compRes.data?.data || [];
@@ -7658,7 +7658,7 @@ function QuickInquiryDrawer({
 
   const buyerFetcher: FetchOptions = useCallback(
     async (term, signal) => {
-      const { data } = await apiGet<any>("/buyers" + toQueryString({ search: term, limit: 20 }), { signal });
+      const { data } = await apiGet<any>("/buyers" + toQueryString({ search: term, limit: 20, status: "active" }), { signal });
       const list = Array.isArray(data) ? data : (data?.data || []);
       return list.map((b: any) => ({
         value: b.id,

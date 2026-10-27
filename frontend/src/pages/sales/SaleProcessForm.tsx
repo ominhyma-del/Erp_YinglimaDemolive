@@ -149,7 +149,7 @@ export function SaleProcessFormPage() {
     company_name: string;
     name?: string;
     branches?: Array<{ id: string; name: string }>;
-  }>("/buyers?page_size=500", 500);
+  }>("/buyers", 500);
 
   // Close search results dropdown on outside click
   useEffect(() => {
@@ -709,7 +709,7 @@ export function SaleProcessFormPage() {
       setSpareSearchLoading(true);
       try {
         const query = spareSearch.trim() ? `&search=${encodeURIComponent(spareSearch.trim())}` : "";
-        const res = await apiGet<any[]>(`/masters/products?is_spare=true&page_size=100${query}`);
+        const res = await apiGet<any[]>(`/masters/products?is_spare=true&status=active&page_size=100${query}`);
         if (mounted && res.data) {
           const list = Array.isArray(res.data) ? res.data : [];
           setSpareSearchResults(list);

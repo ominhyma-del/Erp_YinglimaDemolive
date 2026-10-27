@@ -93,8 +93,8 @@ export function LocalPurchasesPage() {
 
   // Lookups
   const supplierLookup = useLookup<{ id: string; company_name: string }>(
-    "/suppliers",
-    500
+    "/suppliers/lookup",
+    1000
   );
 
   // Fetch Purchases with SWR background revalidation

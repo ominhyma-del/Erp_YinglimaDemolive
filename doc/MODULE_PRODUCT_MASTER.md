@@ -18,7 +18,7 @@ The **Product Master** module is the central repository for all physical items, 
 ### Frontend:
 * **Product Master List & Drawer:** [`Products.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/masters/Products.tsx) (Route: `/masters/products`)
 * **Product Form Modal:** `ProductFormModal.tsx`
-* **Product Prices:** [`ProductPrices.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/inventory/ProductPrices.tsx) (Route: `/inventory/product-prices`)
+* **Product Prices:** [`ProductPrices.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/inventory/ProductPrices.tsx) (Route: `/inventory/product-prices`, see dedicated guide: [`MODULE_PRODUCT_PRICES.md`](file:///d:/Om%20work1/ERP/Yinglima_ERP/doc/MODULE_PRODUCT_PRICES.md))
 * **Product Gallery:** [`ProductGallery.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/inventory/ProductGallery.tsx) (Route: `/product-gallery`)
 
 ### Backend:
@@ -271,7 +271,11 @@ Inhyma and Yinglima maintain independent relational UUID namespaces. Products ar
 * **On-Demand Photo Loading (`frontend/src/pages/masters/Products.tsx`):**
   * The frontend master table employs `<LazyProductImages>`: photos are streamed lazily only when a user interacts or hovers over a specific product's photo cell.
   * When full photo sets are explicitly needed (such as `/product-gallery`), requesting `has_images=true` automatically loads complete image arrays.
+---
 
-
-
-
+## 16. Top Filter Search Button Removal & Instant Reactive Filtering (Release 2026-10-27)
+* **Search Button Omission:**
+  * In `Products.tsx`, the top filter card now sets `hideFilterSearchButton={true}` on `<MasterPage>`, eliminating the redundant orange `[Search]` button.
+  * Category, Sub-Category, and Brand dropdown selections instantly update `extraFilters`, triggering automatic server-side re-querying reactively without requiring an extra click on a search button.
+* **Comprehensive Reset Action (`onResetFilters`):**
+  * Clicking `[Reset]` now triggers `onResetFilters`, clearing Category, Sub Category, and Brand back to "All" along with clearing table search input and resetting to page 1.

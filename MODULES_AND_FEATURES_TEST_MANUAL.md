@@ -305,8 +305,13 @@
 4. **Tabs:**
 
    - **Active Tab:** Displays active vendors (`is_active = true`).
-
    - **Inactive Tab:** Displays deactivated vendors (`is_active = false`).
+   - **Test Verification — Cache Isolation on Tab Switch:**
+     - Navigate to `/suppliers` (Active Tab displays all active vendors, e.g. 44 records).
+     - Click **Inactive** tab. Verify the table clears immediately (`setRows([])`), requests `?is_active=false`, and renders strictly inactive suppliers (e.g. `LT1`, 1 record). Verify active vendors do NOT linger or display on the Inactive tab.
+     - Click back to **Active** tab. Verify the table returns to displaying active vendors.
+   - **Test Verification — Universal Active-Only Dropdowns:**
+     - Verify downstream dropdowns across `/purchases/local`, `/sales/process`, `/inquiries`, `/planning`, and `/inventory/product-prices` strictly fetch and render active records (`status=active` / `is_active=true`). Deactivated suppliers or buyers must never be selectable for new transactions.
 
 5. **Toolbar Row:**
 
@@ -563,6 +568,10 @@ Manage complete vendor team directory:
 - [ ] Test Strict Duplicate Company Name Blocker: Enter an existing supplier name (e.g. "Test 55"). Verify live red alert banner (⛔) appears beneath field. Click Save and verify submission is strictly blocked, focusing the input field. Verify backend rejects duplicate creates/renames with HTTP 409 Conflict.
 
 - [ ] Test 1-Way Status Lock: Change status to `Existing`, save, edit again and verify `New` cannot be chosen.
+
+- [ ] Verify Active vs. Inactive Tabs & Filter Parity: Confirm default `/suppliers` view displays only active suppliers (44). Confirm clicking the "Inactive Suppliers" tab displays inactive vendors (e.g. `LT1`). Verify `GET /api/v1/suppliers?status=active` returns only active vendors.
+
+- [ ] Test Lightweight Dropdown Lookup (`/api/v1/suppliers/lookup`): Verify `GET /api/v1/suppliers/lookup` returns ultra-lean `{ id, company_name, brand_description, supplier_type }` (~4.4 KB) with zero inactive vendors. In Local Purchase creation (`/purchases/local/new`), confirm supplier combobox lists all active suppliers instantly without displaying inactive vendors (`LT1`).
 
 - [ ] Verify soft-delete moves vendor to `/trash`.
 
@@ -934,7 +943,9 @@ Manage complete vendor team directory:
 
 - [ ] Navigate through pages (`Next`, `Page 2`, `Page 3`) and verify 50 products render reliably per page.
 
-- [ ] Filter by Category, Sub-Category, or Brand using the toolbar dropdowns; confirm the table updates immediately with matching filtered count.
+- [ ] Filter by Category, Sub-Category, or Brand using the top filter dropdowns; confirm the table updates immediately and reactively upon selection with matching filtered count (no redundant Search button needed; `hideFilterSearchButton={true}`).
+
+- [ ] Click the `[Reset]` button in the top filter bar; verify Category, Sub Category, and Brand dropdowns reset to "All", search query is cleared, and table resets to Page 1 with all active products.
 
 - [ ] Test Comprehensive Server Search: Search by Product Code (`DAR-01849`), Product Name (`Ink Cup`), Brand Name (`Supreme`), or Category; confirm matching items display instantly without proxy timeout.
 
@@ -1245,6 +1256,18 @@ Manage complete vendor team directory:
 - [ ] **Assign Modal 0ms Optimistic Save**: Click `+ Add Price` or `+ Quote` &rarr; select vendor, enter `125.00`, click Save &rarr; verify modal closes immediately (0ms), price badge and supplier update instantly on the main row without waiting for full catalog reload.
 
 - [ ] **Assign Modal Quick-Clear `✕`**: In the supplier search combobox, type any query or non-existent supplier &rarr; verify `✕` cross button appears inside the input &rarr; click `✕` &rarr; verify text and selection clear instantly, input stays focused, and full supplier list is restored.
+
+- [ ] **Modal Default Preference Checkbox (Safe Off)**: Click `+ Add Price` or `+ Quote` &rarr; verify `⭐ Set as Preferred Supplier for this product` checkbox defaults to **UNCHECKED (`false`)**, guaranteeing that entering a new quotation never alters vendor preference automatically.
+
+- [ ] **Lowest Price vs. Preferred Supplier Separation**: Enter a new quotation with a price lower than all existing quotes (e.g. `¥ 5.00` when benchmark is `¥ 12.00`) with `"Set as Preferred"` unchecked &rarr; save quote &rarr; verify:
+  - Sub-table tags the new quote with green **`LOWEST`** badge.
+  - Action button for that quote remains **`⭐ Set Preferred`** (NOT automatically set as preferred).
+  - Main row "Best Price (Quote)" displays `¥ 5.00`.
+  - Main row "Supplier Brand" displays the supplier name **WITHOUT** any `⭐ Preferred` badge.
+
+- [ ] **Manual Preferred Supplier Designation & Unset**:
+  - In the sub-table, click **`⭐ Set Preferred`** on any vendor quote &rarr; verify the badge updates to gold **`⭐ PREFERRED`**, the button changes to **`⭐ Preferred (Unset)`**, and main row displays `⭐ Preferred`.
+  - Click **`⭐ Preferred (Unset)`** &rarr; verify preference is immediately cleared (`products.supplier_id = null`), the gold badge disappears, the button reverts to **`⭐ Set Preferred`**, and main row "Supplier Brand" displays without `⭐ Preferred`.
 
 - [ ] **Inline Edit Main Row (0ms)**: Click on the price badge `¥ 125.00` &rarr; enter `130.00`, press `Enter` &rarr; verify price badge and sub-table quote update immediately with success banner.
 
@@ -2992,7 +3015,47 @@ Manage complete vendor team directory:
 
   - Drag the column narrower (e.g. to 160px), reload the page, and verify the 160px width is preserved.
 
+- [ ] **TC-PLAN-06: Entity Selection & Empty-State Sheet Creation for Buyers:**
 
+  - Navigate to `/planning`.
+
+  - Click the **Entity** filter dropdown.
+
+  - Select a buyer that does not have an existing sheet (e.g. `QA Automated Buyer 1792732947`).
+
+  - **Verify Entity Switching:**
+    - The Entity trigger displays `👤 [Buyer Name]`.
+    - The previous sheet (`Om Packaging - Mulund`) and table rows are immediately cleared.
+    - The page title updates to `Shipment Planning / [Buyer Name]`.
+    - The URL updates without stale `?sheet=...` parameters, preventing any bounce-back to the previous entity.
+
+  - **Verify Empty-State Card:**
+    - A dedicated card displays with icon, title *"No Planning Sheet Found for [Buyer Name]"*, and a prominent button: **`[ + Create Planning Sheet for [Buyer Name] ]`**.
+
+  - **Verify 1-Click Sheet Creation:**
+    - Click **`[ + Create Planning Sheet for [Buyer Name] ]`**.
+    - The *Add Sheet (Branch Tab)* modal opens with **Buyer Profile** selected, the target buyer pre-selected, and the branch location field populated with `"Main"`.
+    - Click `Create Sheet`.
+    - The sheet creates, the new tab appears, and the planning grid loads immediately for the buyer.
+
+- [ ] **TC-PLAN-07: Status Picker Double-Click Protection & History Deduplication:**
+  - Navigate to `/planning`.
+  - Enter a quantity (e.g. `50`) on an empty consignment cell (e.g. `Mum 1`).
+  - Verify that the cell auto-assigns the blue status tag (`🔵 Ordered to Manufacturer`).
+  - Click the eye icon (`👁️`) on the item row to open the **Cell Change History** popover.
+  - Verify two distinct entries are displayed:
+    1. `🔵 Ordered to Manufacturer` (Status Color Tag).
+    2. `✏️ (empty) -> 50` (Quantity Number Value).
+  - Click on the cell status dot to open the **Status Picker** popover.
+  - Rapidly double-click or spam-click the red tag (`🔴 Requirement`).
+  - **Verify Immediate Dismissal & Lockout:**
+    - The popover closes instantly on the first click.
+    - All picker buttons disable upon click, preventing duplicate network triggers.
+    - In-flight cell request guard (`pendingStatusCellsRef`) ignores duplicate calls for the same cell.
+  - Open the **Cell Change History** popover again.
+  - **Verify Single Change Entry:**
+    - Verify that only **ONE** `🔴 Requirement` entry is logged.
+    - Verify that no duplicate identical status records exist for the same timestamp.
 
 ---
 

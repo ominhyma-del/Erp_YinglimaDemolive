@@ -127,8 +127,8 @@ export function LocalPurchaseFormPage() {
 
   // Lookups
   const supplierLookup = useLookup<{ id: string; company_name: string; supplier_type?: string; brand_description?: string }>(
-    "/suppliers",
-    500
+    "/suppliers/lookup",
+    1000
   );
   const hsnLookup = useLookup<{ id: string; code: string; purchase_vat_percent?: number }>("/masters/hsn", 500);
 
@@ -138,7 +138,7 @@ export function LocalPurchaseFormPage() {
       let list = supplierLookup.items || [];
       if (!list || list.length === 0) {
         try {
-          const res = await apiGet<any>("/suppliers?page_size=1000");
+          const res = await apiGet<any>("/suppliers/lookup");
           const items = Array.isArray(res.data) ? res.data : res.data?.items || [];
           list = items;
         } catch {
@@ -189,7 +189,7 @@ export function LocalPurchaseFormPage() {
       let list = supplierLookup.items || [];
       if (!list || list.length === 0) {
         try {
-          const res = await apiGet<any>("/suppliers?page_size=1000");
+          const res = await apiGet<any>("/suppliers/lookup");
           const items = Array.isArray(res.data) ? res.data : res.data?.items || [];
           list = items;
         } catch {

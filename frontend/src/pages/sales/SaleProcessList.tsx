@@ -124,7 +124,7 @@ export function SaleProcessListPage() {
 
   // Lookups
   const buyerLookup = useLookup<{ id: string; company_name: string; name?: string }>(
-    "/buyers?page_size=500",
+    "/buyers",
     500
   );
 

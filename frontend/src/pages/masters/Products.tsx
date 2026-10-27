@@ -804,6 +804,12 @@ export function ProductsPage() {
       onItemsLoaded={setCatalogProducts}
       useFullPageForm={true}
       hideQuickAdd={true}
+      hideFilterSearchButton={true}
+      onResetFilters={() => {
+        setCategoryFilter("");
+        setSubCategoryFilter("");
+        setBrandFilter("");
+      }}
       extraFilters={extraFilters}
       toolbarExtras={
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "20px", width: "100%" }}>

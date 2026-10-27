@@ -316,7 +316,7 @@ export function ProductPricesPage() {
   const [assignCurrency, setAssignCurrency] = useState<string>("CNY");
   const [assignMoq, setAssignMoq] = useState<string>("");
   const [assignNotes, setAssignNotes] = useState<string>("");
-  const [assignIsPreferred, setAssignIsPreferred] = useState<boolean>(true);
+  const [assignIsPreferred, setAssignIsPreferred] = useState<boolean>(false);
   const [assignSubmitting, setAssignSubmitting] = useState<boolean>(false);
 
 
@@ -642,7 +642,8 @@ export function ProductPricesPage() {
 
     try {
       await apiPut(`/inventory/product-prices/${productId}/preferred-supplier`, { supplier_id: supplierId });
-      setSuccess(supplierId ? `Supplier ${supplierName || ""} selected as preferred` : "Preferred supplier reset to lowest quote");
+      productPriceListCache.clear();
+      setSuccess(supplierId ? `Supplier ${supplierName || ""} selected as preferred` : "Preferred supplier removed (manual mode)");
       setTimeout(() => setSuccess(null), 3000);
       loadProductSuppliers(productId);
     } catch (err) {
@@ -791,6 +792,7 @@ export function ProductPricesPage() {
 
     try {
       await apiDelete(`/inventory/product-prices/${linkId}`);
+      productPriceListCache.clear();
     } catch (err) {
       alert("Failed to remove quote: " + (err instanceof Error ? err.message : String(err)));
       loadProductSuppliers(productId);
@@ -865,7 +867,7 @@ export function ProductPricesPage() {
             primary_supplier_name: makeActive ? resolvedSuppName : row.primary_supplier_name,
             supplier_count: newCount,
             has_price: true,
-            is_preferred: isPref || row.is_preferred,
+            is_preferred: isPref ? true : row.is_preferred,
           };
         }
         return row;
@@ -892,6 +894,7 @@ export function ProductPricesPage() {
         is_preferred: isPref,
       });
       if (res.data?.link_id) {
+        productPriceListCache.clear();
         setItems((prev) =>
           prev.map((r) =>
             r.product_id === productId && (isPref || !r.primary_link_id || priceNum <= (r.best_price ?? 999999))
@@ -917,7 +920,7 @@ export function ProductPricesPage() {
     setAssignCurrency(row.best_currency || "CNY");
     setAssignMoq("");
     setAssignNotes("");
-    setAssignIsPreferred(true);
+    setAssignIsPreferred(false);
     if ((row.supplier_count || 0) > 0 && !supplierQuotes[row.product_id]) {
       loadProductSuppliers(row.product_id);
     }
@@ -970,7 +973,7 @@ export function ProductPricesPage() {
             primary_supplier_name: makeActive ? resolvedSuppName : row.primary_supplier_name,
             supplier_count: newCount,
             has_price: true,
-            is_preferred: assignIsPreferred || row.is_preferred,
+            is_preferred: assignIsPreferred ? true : row.is_preferred,
           };
         }
         return row;
@@ -1025,6 +1028,7 @@ export function ProductPricesPage() {
         is_preferred: assignIsPreferred,
       });
       if (res.data?.link_id) {
+        productPriceListCache.clear();
         setItems((prev) =>
           prev.map((r) =>
             r.product_id === productId && (assignIsPreferred || !r.primary_link_id || priceVal <= (r.best_price ?? 999999))
@@ -2438,7 +2442,7 @@ export function ProductPricesPage() {
                                                         alignItems: "center",
                                                         gap: "3px",
                                                       }}
-                                                      title="Click to unset preferred supplier and revert to lowest quote"
+                                                      title="Click to remove preferred status from this supplier"
                                                     >
                                                       ⭐ Preferred (Unset)
                                                     </button>
@@ -2913,7 +2917,7 @@ export function ProductPricesPage() {
                     <span>⭐ Set as Preferred Supplier for this product</span>
                   </label>
                   <div style={{ fontSize: "11px", color: "#a16207", marginLeft: "24px", marginTop: "2px" }}>
-                    When enabled, this supplier's price will be displayed as the primary rate instead of automatic lowest quote.
+                    Optional: Check this only if you want to manually designate this supplier as Preferred. By default, quotes only record pricing without changing preference.
                   </div>
                 </div>
 

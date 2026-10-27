@@ -50,7 +50,7 @@ class ProductPriceRepository:
         page_size = max(1, min(50000, page_size))
         offset = (page - 1) * page_size
 
-        filter_clauses = ["p.deleted_at IS NULL"]
+        filter_clauses = ["p.deleted_at IS NULL", "(p.status IS NULL OR UPPER(p.status) = 'ACTIVE')"]
         params: dict[str, Any] = {"limit": page_size, "offset": offset}
 
         if category_id:
@@ -513,7 +513,7 @@ class ProductPriceRepository:
         sql = text("""
             SELECT id, company_name, supplier_type, brand_description
             FROM suppliers
-            WHERE is_active = true
+            WHERE is_active = true AND deleted_at IS NULL
             ORDER BY company_name ASC
         """)
         res = await self.session.execute(sql)

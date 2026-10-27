@@ -525,3 +525,40 @@ To ensure zero discrepancy between vendor profile headers and contact roster sub
    - Direct deletion of a primary contact is blocked (`ConflictException`). The user must designate another contact as primary first before removing a former primary contact, preventing orphaned profile data.
 5. **Pre-Fill Hydration for Existing Records:**
    - Opening `openModal()` on a supplier whose `contact_full_name` was previously unpopulated automatically falls back to hydrating from the supplier's primary contact (or first contact in roster), eliminating blank inputs.
+
+---
+
+### 7.9 Lightweight Active Supplier Dropdown Lookup (`GET /api/v1/suppliers/lookup`)
+
+Downstream procurement modules (e.g. **Local Purchase Order**, **Local Purchases Table**, **Inquiries & Quotations**, **Product Prices**) frequently render type-ahead comboboxes to select suppliers.
+
+1. **Ultra-Slim Payload:**
+   - Instead of serializing the entire `Supplier` model with all relations (25 KB to 3 MB), `GET /api/v1/suppliers/lookup` returns strictly `{ id, company_name, brand_description, supplier_type }`.
+   - Payload size is **4.43 KB** for 44 active suppliers (an 82% reduction).
+2. **In-Memory Cache & Sub-Millisecond Search:**
+   - Backed by `CacheManager` dropdown cache (`suppliers::dropdown`).
+   - Supports optional `?search=<term>` query parameter which evaluates in memory, returning filtered results in **< 1 ms**.
+3. **Automatic Active Status Enforcement:**
+   - By definition, the lookup query executes with `WHERE deleted_at IS NULL AND is_active = true`.
+   - Inactive suppliers (e.g. `LT1`) are omitted automatically, preventing obsolete or inactive vendors from being inadvertently selected for new purchase orders.
+
+---
+
+### 7.10 Active vs Inactive Tab Cache Isolation & Universal Status Filtering
+
+1. **Tab Structure on Master View (`/suppliers`):**
+   - The top of the supplier list renders two distinct navigation tabs: **Active** (default) and **Inactive**.
+   - The Active tab displays all operational vendors where `is_active = true` (44 suppliers).
+   - The Inactive tab displays deactivated vendors where `is_active = false` (e.g. `LT1`), enabling reviewing, reactivation, or permanent soft-deletion according to deletion eligibility rules.
+2. **Backend List Query Cache Key (`backend/app/suppliers/routes.py`):**
+   - The `/api/v1/suppliers` list query cache key explicitly incorporates exact filter parameters:
+     ```python
+     filters_repr = ":".join(f"{k}={v}" for k, v in sorted(query.filters.exact.items()))
+     cache_key = f"suppliers:{page}:{page_size}:{search}:{filters_repr}:{cat}:{sub_cat}:{prod}"
+     ```
+   - This prevents cross-tab cache pollution between `is_active=true` and `is_active=false`.
+   - All supplier list cache entries are grouped under the `"suppliers"` namespace and invalidated atomically via `delete_namespace("suppliers")` upon any supplier mutation, activation, deactivation, or deletion.
+3. **Frontend Tab Switching & Clean Loading State:**
+   - Switching between Active and Inactive immediately clears the table rows (`setRows([])`) to eliminate UI flicker.
+   - The frontend fallback cache strictly distinguishes default queries on the Active tab from the Inactive tab, ensuring the Inactive tab always reflects true database state.
+

@@ -1434,7 +1434,8 @@ export function SuppliersPage() {
         product_id: productFilter || "",
       };
       const queryKey = toQueryString(params);
-      const cached = supplierListCache.get(queryKey) || supplierListCache.get("default");
+      const isDefaultActiveQuery = statusTab === "active" && !effectiveSearch && !categoryFilter && !subCategoryFilter && !productFilter && !countryFilter && !stateFilter && !cityFilter && !supplierTypeFilter && !gradeFilter && !statusFilter && !potentialFilter && !visitedFilter && currentPage === 1;
+      const cached = supplierListCache.get(queryKey) || (isDefaultActiveQuery ? supplierListCache.get("default") : null);
       if (!cached && rows.length === 0) {
         setLoading(true);
       }
@@ -1445,7 +1446,9 @@ export function SuppliersPage() {
         setRows(items);
         setPagination(meta?.pagination);
         supplierListCache.set(queryKey, { rows: items, pagination: meta?.pagination, timestamp: Date.now() });
-        supplierListCache.set("default", { rows: items, pagination: meta?.pagination, timestamp: Date.now() });
+        if (isDefaultActiveQuery) {
+          supplierListCache.set("default", { rows: items, pagination: meta?.pagination, timestamp: Date.now() });
+        }
         setError(null);
         setLoading(false);
 
@@ -4662,9 +4665,12 @@ export function SuppliersPage() {
                   cursor: "pointer",
                 }}
                 onClick={() => {
-                  setCurrentPage(1);
-                  setSelectedIds([]);
-                  setStatusTab("active");
+                  if (statusTab !== "active") {
+                    setRows([]);
+                    setCurrentPage(1);
+                    setSelectedIds([]);
+                    setStatusTab("active");
+                  }
                 }}
               >
                 Active
@@ -4682,9 +4688,12 @@ export function SuppliersPage() {
                   cursor: "pointer",
                 }}
                 onClick={() => {
-                  setCurrentPage(1);
-                  setSelectedIds([]);
-                  setStatusTab("inactive");
+                  if (statusTab !== "inactive") {
+                    setRows([]);
+                    setCurrentPage(1);
+                    setSelectedIds([]);
+                    setStatusTab("inactive");
+                  }
                 }}
               >
                 Inactive

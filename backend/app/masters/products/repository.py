@@ -252,9 +252,12 @@ class ProductRepository(BaseRepository[Product]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
-    async def list_all(self) -> list[Product]:
-        """Return every non-deleted product, ordered by name."""
-        stmt = self._base_select().order_by(Product.product_name)
+    async def list_all(self, *, active_only: bool = True) -> list[Product]:
+        """Return products, optionally filtering to active only, ordered by name."""
+        stmt = self._base_select()
+        if active_only:
+            stmt = stmt.where(Product.status == "active")
+        stmt = stmt.order_by(Product.product_name)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

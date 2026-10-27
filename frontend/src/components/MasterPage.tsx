@@ -129,6 +129,10 @@ export interface MasterPageProps<T extends MasterRecord> {
   extraFilters?: Record<string, string>;
   /** Extra toolbar controls rendered after the search box. */
   toolbarExtras?: ReactNode;
+  /** When true, omits the orange "Search" button in the top expandable filter bar. */
+  hideFilterSearchButton?: boolean;
+  /** Optional callback fired when the top filter "Reset" button is clicked. */
+  onResetFilters?: () => void;
   /**
    * Optional callback to determine whether a specific row can be deleted.
    * Return true/false or { allowed: boolean; reason?: string }.
@@ -546,6 +550,8 @@ export function MasterPage<T extends MasterRecord>({
   renderFields,
   extraFilters,
   toolbarExtras,
+  hideFilterSearchButton = false,
+  onResetFilters,
   useFullPageForm,
   modalCardStyle,
   hideQuickAdd,
@@ -2639,30 +2645,33 @@ export function MasterPage<T extends MasterRecord>({
                 onClick={() => {
                   setSearchInput("");
                   setCurrentPage(1);
+                  onResetFilters?.();
                   reload();
                 }}
               >
                 Reset
               </button>
-              <button
-                type="button"
-                style={{
-                  padding: "6px 16px",
-                  borderRadius: "6px",
-                  border: "none",
-                  background: "#f59e0b",
-                  color: "#ffffff",
-                  fontWeight: 600,
-                  fontSize: "13px",
-                  cursor: "pointer",
-                }}
-                onClick={() => {
-                  setCurrentPage(1);
-                  reload();
-                }}
-              >
-                Search
-              </button>
+              {!hideFilterSearchButton && (
+                <button
+                  type="button"
+                  style={{
+                    padding: "6px 16px",
+                    borderRadius: "6px",
+                    border: "none",
+                    background: "#f59e0b",
+                    color: "#ffffff",
+                    fontWeight: 600,
+                    fontSize: "13px",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    setCurrentPage(1);
+                    reload();
+                  }}
+                >
+                  Search
+                </button>
+              )}
             </div>
           </div>
         )}
