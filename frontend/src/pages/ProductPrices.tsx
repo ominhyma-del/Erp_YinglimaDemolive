@@ -106,19 +106,28 @@ function formatCurrency(amount: number | null | undefined, currency = "CNY"): st
   return `${symbol} ${Number(amount).toFixed(2)}`;
 }
 
+interface ProductPriceCacheEntry {
+  items: ProductPriceRow[];
+  totalItems: number;
+  totalPages: number;
+  timestamp: number;
+}
+const productPriceListCache = new Map<string, ProductPriceCacheEntry>();
+
 export function ProductPricesPage() {
   const { hasPermission } = useAuth();
   const confirm = useConfirm();
   // Query Filters & Pagination State
-  const [items, setItems] = useState<ProductPriceRow[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const initialCache = productPriceListCache.get("default");
+  const [items, setItems] = useState<ProductPriceRow[]>(() => initialCache?.items || []);
+  const [loading, setLoading] = useState<boolean>(() => !initialCache);
   const [error, setError] = useState<unknown>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(50);
-  const [totalItems, setTotalItems] = useState<number>(0);
-  const [totalPages, setTotalPages] = useState<number>(1);
+  const [totalItems, setTotalItems] = useState<number>(() => initialCache?.totalItems || 0);
+  const [totalPages, setTotalPages] = useState<number>(() => initialCache?.totalPages || 1);
 
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = useState<string>("");
@@ -478,32 +487,51 @@ export function ProductPricesPage() {
 
   // Load Main Product Prices List
   const fetchPrices = useCallback(async () => {
-    setLoading(true);
+    const params: Record<string, string | number> = {
+      page,
+      page_size: pageSize,
+      sort_by: sortBy,
+      sort_dir: sortDir,
+    };
+
+    if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
+    if (categoryFilter) params.category_id = categoryFilter;
+    if (subCategoryFilter) params.sub_category_id = subCategoryFilter;
+    if (brandFilter) params.brand_id = brandFilter;
+    if (pricingStatusFilter === "priced") params.has_price = "true";
+    else if (pricingStatusFilter === "unpriced") params.has_price = "false";
+
+    const queryKey = toQueryString(params);
+    const cached = productPriceListCache.get(queryKey) || productPriceListCache.get("default");
+    if (!cached && items.length === 0) {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const params: Record<string, string | number> = {
-        page,
-        page_size: pageSize,
-        sort_by: sortBy,
-        sort_dir: sortDir,
-      };
-
-      if (debouncedSearch.trim()) params.search = debouncedSearch.trim();
-      if (categoryFilter) params.category_id = categoryFilter;
-      if (subCategoryFilter) params.sub_category_id = subCategoryFilter;
-      if (brandFilter) params.brand_id = brandFilter;
-      if (pricingStatusFilter === "priced") params.has_price = "true";
-      else if (pricingStatusFilter === "unpriced") params.has_price = "false";
-
       const url = `/inventory/product-prices${toQueryString(params)}`;
       const { data, meta } = await apiGet<ProductPriceRow[]>(url);
 
-      setItems(data || []);
+      const itemsList = data || [];
       const metaAny = meta as Record<string, any> | undefined;
-      if (metaAny) {
-        setTotalItems(metaAny.total_items ?? 0);
-        setTotalPages(metaAny.total_pages ?? 1);
-      }
+      const tItems = metaAny?.total_items ?? itemsList.length;
+      const tPages = metaAny?.total_pages ?? 1;
+
+      setItems(itemsList);
+      setTotalItems(tItems);
+      setTotalPages(tPages);
+
+      productPriceListCache.set(queryKey, {
+        items: itemsList,
+        totalItems: tItems,
+        totalPages: tPages,
+        timestamp: Date.now(),
+      });
+      productPriceListCache.set("default", {
+        items: itemsList,
+        totalItems: tItems,
+        totalPages: tPages,
+        timestamp: Date.now(),
+      });
     } catch (err) {
       setError(err);
     } finally {
@@ -1014,12 +1042,34 @@ export function ProductPricesPage() {
     }
   };
 
-  // Open Product Detail Drawer
-  const openProductDrawer = async (productId: string) => {
-    setDrawerLoading(true);
+  // Open Product Detail Drawer (Instant 0ms with local summary fallback)
+  const openProductDrawer = async (productId: string, fallbackItem?: any) => {
+    const summary = fallbackItem || items.find((p) => p.product_id === productId || (p as any).id === productId);
+    if (summary) {
+      setDrawerProduct({
+        id: summary.product_id || (summary as any).id || productId,
+        product_code: summary.product_code || "",
+        product_name: summary.product_name || "",
+        product_name_tally: summary.product_name_tally || summary.product_name || "",
+        specification: summary.specification || "",
+        category_id: summary.category_id || "",
+        sub_category_id: summary.sub_category_id || "",
+        brand_id: summary.brand_id || "",
+        uom_id: summary.uom_id || "",
+        packaging_quantity: summary.packaging_quantity,
+        packaging_gross_weight: summary.packaging_gross_weight,
+        packaging_unit_cbm: summary.packaging_unit_cbm,
+        status: "active",
+      } as any);
+      setDrawerLoading(false);
+    } else {
+      setDrawerLoading(true);
+    }
     try {
       const { data } = await apiGet<Product>(`/masters/products/${productId}`);
-      setDrawerProduct(data);
+      if (data) {
+        setDrawerProduct(data);
+      }
     } catch (err) {
       console.error("Failed to load product details:", err);
     } finally {
@@ -1807,7 +1857,7 @@ export function ProductPricesPage() {
                                       <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
                                         <button
                                           type="button"
-                                          onClick={() => openProductDrawer(row.product_id)}
+                                          onClick={() => openProductDrawer(row.product_id, row)}
                                           style={{
                                             background: "none",
                                             border: "none",

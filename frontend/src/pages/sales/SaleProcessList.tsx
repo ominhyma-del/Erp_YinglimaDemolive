@@ -16,7 +16,15 @@ import { useLookup } from "@/lib/lookups";
 import { useToast } from "@/lib/toast";
 import { useConfirm } from "@/lib/confirm";
 import type { SaleOrder, SaleSummaryMetrics } from "@/types/saleProcess";
+import {
+  getSaleOrdersListCache,
+  setSaleOrdersListCache,
+  getSaleMetricsCache,
+  setSaleMetricsCache,
+  removeSaleOrderFromCache,
+} from "@/lib/saleProcessCache";
 import { SaleProcessDetailModal } from "./SaleProcessDetailModal";
+import { SaleProcessOutwardModal } from "./SaleProcessOutwardModal";
 
 export function SaleProcessListPage() {
   const navigate = useNavigate();
@@ -24,23 +32,8 @@ export function SaleProcessListPage() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const [orders, setOrders] = useState<SaleOrder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(50);
-
-  // Metrics
-  const [metrics, setMetrics] = useState<SaleSummaryMetrics>({
-    all: { count: 0, amount: 0 },
-    pending: { count: 0, amount: 0 },
-    sales_confirmed: { count: 0, amount: 0 },
-    admin_approved: { count: 0, amount: 0 },
-    dispatched: { count: 0, amount: 0 },
-    lr: { count: 0, amount: 0 },
-    cancelled: { count: 0, amount: 0 },
-    currency: "RMB",
-  });
 
   // Filters state
   const [search, setSearch] = useState("");
@@ -52,10 +45,54 @@ export function SaleProcessListPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const listCacheKey = useMemo(() => {
+    return JSON.stringify({
+      page,
+      pageSize,
+      search: search.trim(),
+      activeTab,
+      selectedBuyerId,
+      selectedConsignment,
+      selectedCurrency,
+      dateFrom,
+      dateTo,
+    });
+  }, [page, pageSize, search, activeTab, selectedBuyerId, selectedConsignment, selectedCurrency, dateFrom, dateTo]);
+
+  const metricsCacheKey = useMemo(() => {
+    return JSON.stringify({
+      selectedBuyerId,
+      selectedCurrency,
+      dateFrom,
+      dateTo,
+    });
+  }, [selectedBuyerId, selectedCurrency, dateFrom, dateTo]);
+
+  const initialListCache = useMemo(() => getSaleOrdersListCache(listCacheKey), [listCacheKey]);
+  const initialMetricsCache = useMemo(() => getSaleMetricsCache(metricsCacheKey), [metricsCacheKey]);
+
+  const [orders, setOrders] = useState<SaleOrder[]>(() => (initialListCache ? initialListCache.items : []));
+  const [loading, setLoading] = useState(() => !initialListCache);
+  const [total, setTotal] = useState(() => (initialListCache ? initialListCache.total : 0));
+  const [selectedOrder, setSelectedOrder] = useState<SaleOrder | null>(null);
+
+  // Metrics
+  const [metrics, setMetrics] = useState<SaleSummaryMetrics>(() => initialMetricsCache || {
+    all: { count: 0, amount: 0 },
+    pending: { count: 0, amount: 0 },
+    sales_confirmed: { count: 0, amount: 0 },
+    admin_approved: { count: 0, amount: 0 },
+    dispatched: { count: 0, amount: 0 },
+    lr: { count: 0, amount: 0 },
+    cancelled: { count: 0, amount: 0 },
+    currency: "RMB",
+  });
+
   // Action Menu & Modal State
   const [openActionId, setOpenActionId] = useState<string | null>(null);
   const [actionMenuPos, setActionMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [dispatchOrderId, setDispatchOrderId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
   // Sync deep link query params (from notifications or external links)
@@ -103,15 +140,19 @@ export function SaleProcessListPage() {
       const res = await apiGet<SaleSummaryMetrics>(`/sales/metrics?${params.toString()}`);
       if (res.data) {
         setMetrics(res.data);
+        setSaleMetricsCache(metricsCacheKey, res.data);
       }
     } catch {
       // Non-critical, fallback quietly
     }
-  }, [selectedBuyerId, selectedCurrency, dateFrom, dateTo]);
+  }, [metricsCacheKey, selectedBuyerId, selectedCurrency, dateFrom, dateTo]);
 
   // Fetch Sale Orders
   const fetchOrders = useCallback(async () => {
-    setLoading(true);
+    const cached = getSaleOrdersListCache(listCacheKey);
+    if (!cached) {
+      setLoading(true);
+    }
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -136,13 +177,16 @@ export function SaleProcessListPage() {
       if (res.data) {
         setOrders(res.data.items);
         setTotal(res.data.total);
+        setSaleOrdersListCache(listCacheKey, { items: res.data.items, total: res.data.total });
       }
     } catch (err) {
-      toast(errorMessage(err), "error");
+      if (!cached) {
+        toast(errorMessage(err), "error");
+      }
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, activeTab, selectedBuyerId, selectedConsignment, selectedCurrency, dateFrom, dateTo, toast]);
+  }, [listCacheKey, page, pageSize, search, activeTab, selectedBuyerId, selectedConsignment, selectedCurrency, dateFrom, dateTo, toast]);
 
   useEffect(() => {
     fetchOrders();
@@ -165,6 +209,9 @@ export function SaleProcessListPage() {
     try {
       await apiDelete(`/sales/orders/${orderId}`);
       toast(`Order ${orderNo} deleted.`, "success");
+      removeSaleOrderFromCache(orderId);
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setTotal((prev) => Math.max(0, prev - 1));
       fetchOrders();
       fetchMetrics();
     } catch (err) {
@@ -954,7 +1001,10 @@ export function SaleProcessListPage() {
                         position: openActionId === order.id ? "relative" : undefined,
                         zIndex: openActionId === order.id ? 150 : undefined,
                       }}
-                      onClick={() => setViewOrderId(order.id)}
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setViewOrderId(order.id);
+                      }}
                     >
                       <td
                         style={{
@@ -1039,7 +1089,51 @@ export function SaleProcessListPage() {
                         </div>
                       </td>
                       <td style={{ padding: "10px 12px", whiteSpace: "nowrap", borderBottom: "1px solid #f1f5f9" }}>
-                        {getStatusBadge(order.status)}
+                        <div>{getStatusBadge(order.status)}</div>
+                        {order.status === "dispatched" && order.stock_movement_number ? (
+                          <div style={{ marginTop: "3px", fontSize: "11px" }}>
+                            <a
+                              href="/inventory/stock-movements"
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ color: "#7e22ce", fontWeight: 600, textDecoration: "none" }}
+                              title="View Outward Stock Movement Voucher"
+                            >
+                              Outward: {order.stock_movement_number}
+                            </a>
+                          </div>
+                        ) : (order.status === "admin_approved" || order.status === "sales_confirmed") ? (
+                          <Can permission="sale_process.update">
+                            <div style={{ marginTop: "4px" }}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDispatchOrderId(order.id);
+                                }}
+                                title="Dispatch order and deduct stock from warehouse"
+                                style={{
+                                  background: "#faf5ff",
+                                  border: "1px solid #d8b4fe",
+                                  color: "#7e22ce",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  borderRadius: "4px",
+                                  padding: "2px 7px",
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "3px",
+                                }}
+                                onMouseEnter={(e) => (e.currentTarget.style.background = "#f3e8ff")}
+                                onMouseLeave={(e) => (e.currentTarget.style.background = "#faf5ff")}
+                              >
+                                📤 Outward / Dispatch Stock
+                              </button>
+                            </div>
+                          </Can>
+                        ) : null}
                       </td>
                       <td style={{ padding: "10px 12px", fontSize: "12px", color: "#475569", borderBottom: "1px solid #f1f5f9" }}>
                         {order.container_no ? (
@@ -1127,6 +1221,7 @@ export function SaleProcessListPage() {
                     const id = activeOrder.id;
                     setOpenActionId(null);
                     setActionMenuPos(null);
+                    setSelectedOrder(activeOrder);
                     setViewOrderId(id);
                   }}
                   style={{
@@ -1147,6 +1242,52 @@ export function SaleProcessListPage() {
                 >
                   <span>👁️</span> <span>View Details</span>
                 </button>
+
+                {activeOrder.status !== "dispatched" && activeOrder.status !== "lr" && activeOrder.status !== "cancelled" ? (
+                  <Can permission="sale_process.update">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = activeOrder.id;
+                        setOpenActionId(null);
+                        setActionMenuPos(null);
+                        setDispatchOrderId(id);
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        border: "none",
+                        background: "#faf5ff",
+                        textAlign: "left",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                        color: "#7e22ce",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        borderTop: "1px solid #f1f5f9",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f3e8ff")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "#faf5ff")}
+                    >
+                      <span>📤</span> <span>Outward / Dispatch Stock</span>
+                    </button>
+                  </Can>
+                ) : activeOrder.stock_movement_number ? (
+                  <div
+                    style={{
+                      padding: "8px 12px",
+                      fontSize: "11.5px",
+                      color: "#7e22ce",
+                      fontWeight: 600,
+                      background: "#faf5ff",
+                      borderTop: "1px solid #f1f5f9",
+                    }}
+                  >
+                    ✓ Outward: {activeOrder.stock_movement_number}
+                  </div>
+                ) : null}
 
                 <Can permission="sale_process.update">
                   <button
@@ -1272,13 +1413,28 @@ export function SaleProcessListPage() {
       {viewOrderId && (
         <SaleProcessDetailModal
           orderId={viewOrderId}
-          onClose={() => setViewOrderId(null)}
+          initialOrder={selectedOrder}
+          onClose={() => {
+            setViewOrderId(null);
+            setSelectedOrder(null);
+          }}
           onStatusUpdated={() => {
             fetchOrders();
             fetchMetrics();
           }}
         />
       )}
+
+      {/* Outward Stock Dispatch Modal */}
+      <SaleProcessOutwardModal
+        isOpen={!!dispatchOrderId}
+        orderId={dispatchOrderId}
+        onClose={() => setDispatchOrderId(null)}
+        onSuccess={() => {
+          fetchOrders();
+          fetchMetrics();
+        }}
+      />
     </AppShell>
   );
 }

@@ -50,6 +50,12 @@ import { useConfirm } from "@/lib/confirm";
 import { useLiveList } from "@/lib/live/useLiveList";
 import { handleFormEnterKeyNavigation } from "@/lib/formUtils";
 import { invalidateLookupCache } from "@/lib/lookups";
+import {
+  getMasterListCache,
+  setMasterListCache,
+  updateMasterRecordInCache,
+  removeMasterRecordFromCache,
+} from "@/lib/masterListCache";
 import type { ImportHeader, ImportSummary, MasterRecord, PaginationMeta } from "@/types";
 
 /** Form state is a flat id -> string map, mirroring the original inputs. */
@@ -571,10 +577,14 @@ export function MasterPage<T extends MasterRecord>({
   const canExport = exportPermission ? hasPermission(exportPermission) : hasPermission(`${permissionPrefix}.export`);
   const canBulkAction = bulkActionPermission ? hasPermission(bulkActionPermission) : hasPermission(`${permissionPrefix}.bulk_action`);
 
-  const [rows, setRows] = useState<T[]>([]);
-  const [allRecords, setAllRecords] = useState<T[]>([]);
-  const [pagination, setPagination] = useState<PaginationMeta | undefined>();
-  const [loading, setLoading] = useState(true);
+  const initialCache = getMasterListCache<T>(
+    apiBase,
+    clientSideSearch ? "all" : `page=1&page_size=50&status=active`
+  );
+  const [rows, setRows] = useState<T[]>(() => initialCache?.rows || []);
+  const [allRecords, setAllRecords] = useState<T[]>(() => initialCache?.allRecords || initialCache?.rows || []);
+  const [pagination, setPagination] = useState<PaginationMeta | undefined>(() => initialCache?.pagination || undefined);
+  const [loading, setLoading] = useState<boolean>(() => !initialCache);
   const [error, setError] = useState<unknown>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -898,7 +908,14 @@ export function MasterPage<T extends MasterRecord>({
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
+      const cached = getMasterListCache<T>(apiBase, "all");
+      if (cached && rows.length === 0) {
+        setAllRecords(cached.allRecords);
+        setRows(cached.rows);
+      }
+      if (!cached && rows.length === 0) {
+        setLoading(true);
+      }
       try {
         const { data } = await apiGet<T[]>(`${apiBase}?page=1&page_size=10000&sort_order=asc`);
         if (cancelled) return;
@@ -909,13 +926,16 @@ export function MasterPage<T extends MasterRecord>({
         }
         setAllRecords(items);
         setRows(items);
+        setMasterListCache(apiBase, "all", { rows: items, allRecords: items, pagination: null });
         onItemsLoaded?.(items);
         setError(null);
       } catch (err) {
         if (cancelled) return;
-        setAllRecords([]);
-        setRows([]);
-        setError(err);
+        if (!cached) {
+          setAllRecords([]);
+          setRows([]);
+          setError(err);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -932,7 +952,6 @@ export function MasterPage<T extends MasterRecord>({
     let cancelled = false;
 
     (async () => {
-      setLoading(true);
       const params: Record<string, string | number> = {
         page: currentPage,
         page_size: pageSize,
@@ -941,6 +960,16 @@ export function MasterPage<T extends MasterRecord>({
       if (effectiveSearch) params.search = effectiveSearch;
       if (statusFilter) params.status = statusFilter;
       Object.assign(params, extraFilters || {});
+
+      const queryKey = toQueryString(params);
+      const cached = getMasterListCache<T>(apiBase, queryKey);
+      if (cached && rows.length === 0) {
+        setRows(cached.rows);
+        setPagination(cached.pagination || undefined);
+      }
+      if (!cached && rows.length === 0) {
+        setLoading(true);
+      }
 
       try {
         const { data, meta } = await apiGet<T[]>(apiBase + toQueryString(params));
@@ -952,11 +981,14 @@ export function MasterPage<T extends MasterRecord>({
         }
         setRows(items);
         setPagination(meta?.pagination);
+        setMasterListCache(apiBase, queryKey, { rows: items, pagination: meta?.pagination || null });
         setError(null);
       } catch (err) {
         if (cancelled) return;
-        setRows([]);
-        setError(err);
+        if (!cached) {
+          setRows([]);
+          setError(err);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1298,6 +1330,7 @@ export function MasterPage<T extends MasterRecord>({
           setRows((prev) => prev.map((row) => (row.id === editingId ? recordToUse : row)));
         }
         setAllRecords((prev) => prev.map((row) => (row.id === editingId ? recordToUse : row)));
+        updateMasterRecordInCache(apiBase, recordToUse);
         invalidateLookupCache(apiBase);
       } else {
         const { data: newRecord } = await apiPost<T>(apiBase, payload);
@@ -1308,6 +1341,7 @@ export function MasterPage<T extends MasterRecord>({
           setRows((prev) => [newRecord, ...prev]);
           setAllRecords((prev) => [newRecord, ...prev]);
           setPagination((prev) => (prev ? { ...prev, total_records: (prev.total_records || 0) + 1 } : prev));
+          updateMasterRecordInCache(apiBase, newRecord);
         } else {
           reload();
         }
@@ -1330,11 +1364,26 @@ export function MasterPage<T extends MasterRecord>({
 
   /* --- Row actions --- */
   async function handleEdit(id: string) {
+    const local = rows.find((r) => r.id === id) || allRecords.find((r) => r.id === id);
+    if (local) {
+      openModal(local);
+    }
     try {
       const { data } = await apiGet<T>(`${apiBase}/${id}`);
-      openModal(data);
+      if (data) {
+        if (!local) {
+          openModal(data);
+        } else {
+          setEditingItem(data);
+          if (fillForm) {
+            setForm(fillForm(data));
+          }
+        }
+      }
     } catch (err) {
-      setError(err);
+      if (!local) {
+        setError(err);
+      }
     }
   }
 
@@ -1375,6 +1424,7 @@ export function MasterPage<T extends MasterRecord>({
       setRows((prev) => prev.filter((row) => row.id !== id));
       setAllRecords((prev) => prev.filter((row) => row.id !== id));
       setPagination((prev) => (prev ? { ...prev, total_records: Math.max(0, (prev.total_records || 1) - 1) } : prev));
+      removeMasterRecordFromCache(apiBase, id);
       invalidateLookupCache(apiBase);
       setReloadCounter((c) => c + 1);
     } catch (err) {

@@ -2366,6 +2366,9 @@ export function PlanningPage() {
   /** Rows per page for the grid -- matches Product Master's own default page size. */
   const GRID_PAGE_SIZE = 50;
 
+  /** In-memory cache for planning sheets to enable 0ms instant tab switching */
+  const planningGridCacheRef = useRef<Map<string, PlanningGrid>>(new Map());
+
   /**
    * Load (or reload) a sheet's grid, always starting from page 1.
    *
@@ -2378,21 +2381,30 @@ export function PlanningPage() {
    */
   const loadGrid = useCallback(
     async (sheetId: string, organizationIdOverride?: string | null) => {
-      setLoading(true);
+      const organizationId =
+        organizationIdOverride !== undefined ? organizationIdOverride : activeOrganizationId;
+      const qs = toQueryString({
+        offset: 0,
+        limit: GRID_PAGE_SIZE,
+        ...(organizationId ? { organization_id: organizationId } : {}),
+        ...(searchQueryParam ? { search: searchQueryParam } : {}),
+      });
+      const cacheKey = `${sheetId}:${qs}`;
+      const cached = planningGridCacheRef.current.get(cacheKey) || planningGridCacheRef.current.get(sheetId);
+      if (cached) {
+        setGrid(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       try {
-        const organizationId =
-          organizationIdOverride !== undefined ? organizationIdOverride : activeOrganizationId;
-        const qs = toQueryString({
-          offset: 0,
-          limit: GRID_PAGE_SIZE,
-          ...(organizationId ? { organization_id: organizationId } : {}),
-          ...(searchQueryParam ? { search: searchQueryParam } : {}),
-        });
         const { data } = await apiGet<PlanningGrid>(`/planning/sheets/${sheetId}/grid${qs}`);
         setGrid(data);
+        planningGridCacheRef.current.set(cacheKey, data);
+        planningGridCacheRef.current.set(sheetId, data);
       } catch (err) {
-        setError(err);
+        if (!cached) setError(err);
       } finally {
         setLoading(false);
       }

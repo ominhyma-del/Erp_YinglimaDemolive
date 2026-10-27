@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy import Select, and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, load_only
 
 from app.common.base_repository import BaseRepository
 from app.purchases.local.models import LocalPurchase, LocalPurchaseItem
@@ -95,10 +95,10 @@ class LocalPurchaseRepository(BaseRepository[LocalPurchase]):
         count_stmt = select(func.count(LocalPurchase.id)).where(where_clause)
         total_count = (await self.session.execute(count_stmt)).scalar() or 0
 
-        # Data query with items loaded for line-item count
+        # Data query with items loaded for line-item count (load only id for performance)
         data_stmt = (
             select(LocalPurchase)
-            .options(selectinload(LocalPurchase.items))
+            .options(selectinload(LocalPurchase.items).load_only(LocalPurchaseItem.id))
             .where(where_clause)
             .order_by(desc(LocalPurchase.created_at))
             .offset(offset)

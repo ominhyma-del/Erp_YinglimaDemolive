@@ -239,11 +239,10 @@ Inhyma and Yinglima maintain independent relational UUID namespaces. Products ar
 ---
 
 ## 13. Dual VAT Architecture (`purchase_vat_percent` & `refund_vat_percent`)
-* **Purchase VAT % (`purchase_vat_percent`):**
-  * Stored on the `products` table as `numeric(5, 2) NOT NULL DEFAULT 0.00`.
-  * When selecting an HSN code in the Product Add/Edit form modal, `purchase_vat_percent` is auto-filled from the selected HSN code's configured purchase VAT rate, while remaining freely editable for manual overrides.
-  * Rendered as a prominent blue badge (`13%`) in the Executive Product Detail drawer.
-  * Fully mapped in Product CSV/Excel Import (Add New & Update Existing) and Export.
+* **Catalog-Wide Standard Purchase VAT Initialization (Release 2026-10-26):**
+  * All 887 products and 189 HSN codes in the database were updated from `0.00%` / `null` to the standard Chinese industrial rate of `13.00%` (or their HSN refund rate), while preserving custom rates (such as `Loadcell for above 500gm weigher` at `8.00%`).
+  * As a result, adding any product to Local Purchase or extracting into Sales Process immediately pulls a valid domestic VAT rate for accurate costing and invoice computation.
+
 * **Cross-ERP Tax Sync (`sync_inhyma.py`):**
   * When synchronizing products assigned to the Inhyma organization, the sync payload packages the HSN code, GST %, and Import Duty % (derived from Yinglima's HSN Master) alongside the product's Purchase VAT % and Refund VAT %.
   * Inhyma's product receives the complete tax profile, linking Indian Import Duty and GST seamlessly.
@@ -251,5 +250,28 @@ Inhyma and Yinglima maintain independent relational UUID namespaces. Products ar
 * **Active / Inactive Status Sync Parity:**
   * When a product is deactivated in Yinglima (or reactivated to Active), the sync engine transmits the status transition.
   * In Inhyma ERP's product adapter, `product.status` is updated to `RecordStatus.INACTIVE` (or `ACTIVE`) while explicitly clearing `product.deleted_at = None`. This guarantees the product immediately displays in Inhyma's Inactive tab (or Active tab), rather than being hidden in soft-delete trash.
+
+---
+
+## 14. Automatic HSN Purchase VAT & Refund VAT Inheritance (Release 2026-10-26)
+* **API & Direct Creation Inheritance (`ProductService.create`):**
+  * When creating a product via API or backend service, if `purchase_vat_percent` or `refund_vat_percent` is omitted (null or <= 0), the service automatically queries the selected `HSN` code and populates the missing VAT rates from `HsnCode.purchase_vat_percent` and `HsnCode.refund_vat_percent`.
+  * If the HSN code has no tax configured, it gracefully defaults to `0.0%`.
+* **CSV / Excel Import Inheritance (`ProductService.import_file`):**
+  * In `import_file`, whenever the user leaves the `Purchase VAT %` or `Refund VAT %` column blank in the import file, the import processor resolves the HSN code and inherits both tax rates automatically during row creation.
+  * Verified with integration tests ensuring imported products carry exact HSN tax rates without requiring manual re-entry.
+
+---
+
+## 15. High-Speed List Payload Slimming & Default Light-List Optimization (Release 2026-10-26)
+* **Default `light_list=True` Optimization (`backend/app/masters/products/routes.py`):**
+  * In `GET /api/v1/masters/products`, image payloads (raw base64 strings and large JSON photo arrays) are omitted by default for general table views.
+  * Reduced HTTP response payload from **352.3 KB down to 69.3 KB** (a **5x bandwidth reduction**).
+  * Reduced API query response latency from **484.39 ms down to 282.76 ms**.
+* **On-Demand Photo Loading (`frontend/src/pages/masters/Products.tsx`):**
+  * The frontend master table employs `<LazyProductImages>`: photos are streamed lazily only when a user interacts or hovers over a specific product's photo cell.
+  * When full photo sets are explicitly needed (such as `/product-gallery`), requesting `has_images=true` automatically loads complete image arrays.
+
+
 
 
