@@ -64,6 +64,15 @@ Products support flexible organizational scoping via database fields:
 
 ---
 
+## 4.0. Dual-Mode Coexistence: Synced Products & Manually Added Products
+
+The Product Master seamlessly supports both ingestion channels:
+* **Synced Products (from Yinglima):** Machinery, tools, and procurement items synced from Yinglima via event-driven synchronization (`product.created`, `product.updated`, `product.deactivated`).
+* **Manually Created Products (in Inhyma):** Local spare parts, custom modifications, and domestic items added directly via the `+ New Product` modal or Excel import.
+* **Unified Querying:** Product queries operate directly against the unified `products` table without restrictive sync-mapping subqueries or hardcoded UUID blockades, ensuring newly added items appear immediately alongside synced catalog items.
+
+---
+
 ## 4.1. Status Management & High-Speed Bulk Operations
 
 * **Dedicated Bulk Status Endpoints:**
@@ -176,7 +185,7 @@ Inhyma and Yinglima maintain independent relational UUID namespaces. Products ar
   * **873 records created** in `synced_entity_mappings` (`source_erp_id = 'yinglima'`, `entity_type = 'product'`) linking source and target UUIDs for permanent idempotent synchronization.
 * **Zero Data Loss Guarantee & Strict Isolation:**
   * Darsh Impex (652 items), FNB Solution (769 items), and native domestic Indian spare parts (`INH-xxxxx`, 935 items) existing in Inhyma ERP's database were **100% preserved and untouched**. No rows were deleted or overwritten.
-  * Inhyma ERP's Product Master frontend (`/product/list`) and repository query filters are strictly scoped to `synced_from=yinglima` and `organization_id = '85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5'`, ensuring that Inhyma ERP exclusively displays the 873 products originating from Yinglima, while hiding all domestic spare parts and other organizations.
+  * Inhyma ERP's Product Master frontend (`/product/list`) and repository query filters are scoped to `organization_id = '85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5'`, displaying both Yinglima-synced products and natively created Inhyma products while filtering out domestic spare parts (`INH-`) and other organizations.
 ### 6.5. Inactivation vs. Deletion Event Semantics
 * **Inactivation (`status = 'inactive'`):**
   * Dispatches `event_type = "product.updated"` with `payload = {"status": "inactive", "is_active": False}`.

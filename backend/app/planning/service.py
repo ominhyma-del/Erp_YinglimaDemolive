@@ -3540,7 +3540,7 @@ class PlanningService:
         new_custom_tag = str(custom_status_tag_id) if custom_status_tag_id else None
 
         # Early exit if status and custom tag have not changed
-        if old_status == new_status and old_custom_tag == new_custom_tag:
+        if cell is not None and old_status == new_status and old_custom_tag == new_custom_tag:
             return cell
 
         if cell is None:

@@ -463,43 +463,45 @@ export function LocalPurchasesPage() {
               boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>🔍 Filter Options</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+                Filter Options
                 {activeFiltersCount > 0 && (
-                  <span style={{ background: "#2563eb", color: "#ffffff", padding: "1px 7px", borderRadius: "10px", fontSize: "11px", fontWeight: 700 }}>
-                    {activeFiltersCount} active
+                  <span style={{ background: "#2563eb", color: "#ffffff", padding: "1px 7px", borderRadius: "10px", fontSize: "11px", fontWeight: 700, marginLeft: "4px" }}>
+                    {activeFiltersCount}
                   </span>
                 )}
               </div>
-              {activeFiltersCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedSupplierId("");
-                    setSelectedStatus("");
-                    setDateFrom("");
-                    setDateTo("");
-                    setPage(1);
-                  }}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: "5px",
-                    border: "1px solid #fca5a5",
-                    background: "#fff1f2",
-                    color: "#dc2626",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                  }}
-                  title="Clear all active filters"
-                >
-                  ✕ Reset Filters
-                </button>
-              )}
+              <button
+                type="button"
+                className="btn btn-small"
+                style={{
+                  background: "#f1f5f9",
+                  color: "#475569",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  padding: "5px 14px",
+                  fontSize: "12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                onClick={() => {
+                  setSelectedSupplierId("");
+                  setSelectedStatus("");
+                  setDateFrom("");
+                  setDateTo("");
+                  setSearchInput("");
+                  setPage(1);
+                }}
+              >
+                Reset Filters
+              </button>
             </div>
 
             <div
@@ -512,7 +514,7 @@ export function LocalPurchasesPage() {
             >
               {/* Supplier Filter */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
                   Supplier
                 </label>
                 <select
@@ -523,12 +525,14 @@ export function LocalPurchasesPage() {
                   }}
                   style={{
                     width: "100%",
-                    padding: "8px 12px",
+                    height: "38px",
+                    padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
                     fontSize: "13px",
                     background: "#ffffff",
                     color: "#1e293b",
+                    boxSizing: "border-box",
                   }}
                 >
                   <option value="">All Suppliers</option>
@@ -542,7 +546,7 @@ export function LocalPurchasesPage() {
 
               {/* Status Filter */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
                   Status
                 </label>
                 <select
@@ -553,12 +557,14 @@ export function LocalPurchasesPage() {
                   }}
                   style={{
                     width: "100%",
-                    padding: "8px 12px",
+                    height: "38px",
+                    padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
                     fontSize: "13px",
                     background: "#ffffff",
                     color: "#1e293b",
+                    boxSizing: "border-box",
                   }}
                 >
                   <option value="">All Statuses</option>
@@ -571,7 +577,7 @@ export function LocalPurchasesPage() {
 
               {/* From Date */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
                   From Date
                 </label>
                 <input
@@ -583,19 +589,21 @@ export function LocalPurchasesPage() {
                   }}
                   style={{
                     width: "100%",
-                    padding: "7px 12px",
+                    height: "38px",
+                    padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
                     fontSize: "13px",
                     background: "#ffffff",
                     color: "#1e293b",
+                    boxSizing: "border-box",
                   }}
                 />
               </div>
 
               {/* To Date */}
               <div>
-                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#334155", marginBottom: "6px" }}>
+                <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
                   To Date
                 </label>
                 <input
@@ -607,12 +615,14 @@ export function LocalPurchasesPage() {
                   }}
                   style={{
                     width: "100%",
-                    padding: "7px 12px",
+                    height: "38px",
+                    padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
                     fontSize: "13px",
                     background: "#ffffff",
                     color: "#1e293b",
+                    boxSizing: "border-box",
                   }}
                 />
               </div>

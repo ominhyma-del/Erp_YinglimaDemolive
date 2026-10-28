@@ -32,6 +32,14 @@ The **Local Purchase** module allows China operations to record domestic procure
 
 ## 3. What Was Changed / Updated
 
+### Release 2026-10-27: Top Filter Options Card Standardization & Permanent Reset Filters Button
+1. **Permanent `Reset Filters` Button & Unified Card Header:**
+   - Standardized the expandable filter box in `LocalPurchases.tsx` to match the Suppliers and Buyers reference standard:
+     - Header row with `<svg>` Funnel icon and bold title `Filter Options` with active count badge.
+     - Top-right permanent `Reset Filters` button (`background: #f1f5f9`, border `#cbd5e1`, slate text `#475569`, bold, rounded 6px).
+     - Clicking `Reset Filters` instantly resets `selectedSupplierId`, `selectedStatus`, `dateFrom`, `dateTo`, and `searchInput`, restoring pagination to Page 1.
+   - Clean uniform 38px inputs with title-cased labels (`Supplier`, `Status`, `From Date`, `To Date`) positioned cleanly above each input.
+
 ### Release 2026-10-27: Lightweight Supplier Dropdown Migration (`/suppliers/lookup`)
 1. **Lightweight Dropdown Lookup Integration:**
    - Switched `supplierLookup` in `LocalPurchaseForm.tsx` and `LocalPurchases.tsx` to use the dedicated `GET /api/v1/suppliers/lookup` endpoint.

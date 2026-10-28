@@ -536,11 +536,53 @@ export function SaleProcessListPage() {
               background: "#ffffff",
               borderRadius: "8px",
               border: "1px solid #e2e8f0",
-              padding: "16px",
+              padding: "16px 20px",
               marginBottom: "16px",
               boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
             }}
           >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+                Filter Options
+                {activeFiltersCount > 0 && (
+                  <span style={{ background: "#2563eb", color: "#ffffff", padding: "1px 7px", borderRadius: "10px", fontSize: "11px", fontWeight: 700, marginLeft: "4px" }}>
+                    {activeFiltersCount}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn btn-small"
+                style={{
+                  background: "#f1f5f9",
+                  color: "#475569",
+                  border: "1px solid #cbd5e1",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  padding: "5px 14px",
+                  fontSize: "12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                onClick={() => {
+                  setSelectedBuyerId("");
+                  setSelectedConsignment("");
+                  setSelectedCurrency("");
+                  setDateFrom("");
+                  setDateTo("");
+                  setSearch("");
+                  setPage(1);
+                }}
+              >
+                Reset Filters
+              </button>
+            </div>
+
             <div
               style={{
                 display: "grid",
@@ -561,10 +603,13 @@ export function SaleProcessListPage() {
                   }}
                   style={{
                     width: "100%",
+                    height: "38px",
                     padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
                     fontSize: "13px",
+                    background: "#ffffff",
+                    boxSizing: "border-box",
                   }}
                 >
                   <option value="">All Buyers</option>
@@ -591,6 +636,7 @@ export function SaleProcessListPage() {
                   placeholder="e.g. MUMINHYMA 1"
                   style={{
                     width: "100%",
+                    height: "38px",
                     padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
@@ -613,10 +659,13 @@ export function SaleProcessListPage() {
                   }}
                   style={{
                     width: "100%",
+                    height: "38px",
                     padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
                     fontSize: "13px",
+                    background: "#ffffff",
+                    boxSizing: "border-box",
                   }}
                 >
                   <option value="">All Currencies (RMB & USD)</option>
@@ -639,6 +688,7 @@ export function SaleProcessListPage() {
                   }}
                   style={{
                     width: "100%",
+                    height: "38px",
                     padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
@@ -662,6 +712,7 @@ export function SaleProcessListPage() {
                   }}
                   style={{
                     width: "100%",
+                    height: "38px",
                     padding: "7px 10px",
                     borderRadius: "6px",
                     border: "1px solid #cbd5e1",
@@ -671,35 +722,6 @@ export function SaleProcessListPage() {
                 />
               </div>
             </div>
-
-            {/* Clear Filters button */}
-            {activeFiltersCount > 0 && (
-              <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedBuyerId("");
-                    setSelectedConsignment("");
-                    setSelectedCurrency("");
-                    setDateFrom("");
-                    setDateTo("");
-                    setPage(1);
-                  }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "4px",
-                    border: "1px solid #cbd5e1",
-                    background: "#f1f5f9",
-                    color: "#475569",
-                    fontSize: "12px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  Clear All Filters
-                </button>
-              </div>
-            )}
           </div>
         )}
 

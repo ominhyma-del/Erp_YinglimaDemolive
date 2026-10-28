@@ -93,6 +93,16 @@
 31. [USER MANAGEMENT: Organization Chart Module](#31-user-management-organization-chart-module)
 
 32. [AI Subagent Autonomous Testing Prompt Template](#32-ai-subagent-autonomous-testing-prompt-template)
+33. [Universal Import & Deduplication Test Suite (`testingimportfile/`)](#33-universal-import--deduplication-test-suite-testingimportfile)
+34. [Local Purchases & Domestic Procurement Engine (`/purchase/local`)](#34-local-purchases--domestic-procurement-engine-purchaselocal)
+35. [Sale Process & Export Trade Documents Engine (`/sale/process`)](#35-sale-process--export-trade-documents-engine-saleprocess)
+36. [Notification & Automation Rules System (`/settings/notifications`)](#36-notification--automation-rules-system-settingsnotifications)
+37. [Shipment Planning Master Grid & Formula Engine (`/planning`)](#37-shipment-planning-master-grid--formula-engine-planning)
+38. [Stock Movement (Inward & Outward Register & Live Inventory Ledger) (`/inventory/stock-movements`)](#38-stock-movement-inward--outward-register--live-inventory-ledger-inventorystock-movements)
+39. [Multi-Tier Planning & Sales Hierarchy Extraction Engine (`/sale/process/new`)](#39-multi-tier-planning--sales-hierarchy-extraction-engine-saleprocessnew)
+40. [Module-by-Module RBAC & Dynamic Permission Enforcement (Part 1)](#40-module-by-module-rbac--dynamic-permission-enforcement-part-1)
+41. [Cross-ERP Product Master Lifecycle & Inactivation Synchronization (`/masters/products`)](#41-cross-erp-product-master-lifecycle--inactivation-synchronization-mastersproducts)
+42. [MULTI-ERP FEDERATION: Ecosystem SSO Bridge, Canonical Keys & Dynamic Registry Routing](#42-multi-erp-federation-ecosystem-sso-bridge-canonical-keys--dynamic-registry-routing)
 
 
 
@@ -320,6 +330,13 @@
    - **📌 Freeze Columns Button:** Opens column pin popover menu (Left / Right / Unpin).
 
    - **Search Input:** `Search company, country, contact, city, phone...` (live debounced search with `✕` clear button, and numeric Sr. No. jump support).
+     - **Test Verification — Phone Number Formats:**
+       - Search raw unformatted phone digits (e.g. `9561914519` or `+919561914519` or `13800138000`). Verify that suppliers matching formatted numbers (e.g. `+91 9561914519`, `+86 138-0013-8000`) are immediately returned.
+       - Verify secondary contact phone numbers and WeChat IDs in `supplier_contacts` match correctly.
+     - **Test Verification — Geography & City Matching:**
+       - Search city name (e.g. `Wenzhou`, `Foshan`) or country name (`China`). Verify all matching suppliers are returned.
+     - **Test Verification — Contacts & Products:**
+       - Search secondary contact name (e.g. `Chen Wei`, `Prathamesh Bangar`) or product code. Verify matching suppliers display.
 
 
 
@@ -796,6 +813,11 @@ Manage complete vendor team directory:
 13. **STATUS:** `Active` / `Inactive` badge.
 
 14. **ACTIONS:** View Detail Drawer, Edit Product, Download PDF Datasheet, Delete.
+
+- **Search Verification — Product Deep Search:**
+  - Search code with spaces or missing dashes (e.g. `DAR 00099` matches `DAR-00099`).
+  - Search name with space variations (e.g. `GF 100` matches `GF100 Granular Filler`).
+  - Search linked Category name, Sub-Category name, Brand name, HSN code, or Primary/Quoting Supplier name. Verify all matching products return immediately.
 
 
 
@@ -1434,6 +1456,7 @@ Manage complete vendor team directory:
   - **Description**: Text area.
 
   - **Status**: `Active` / `Inactive`.
+- **Top Filter Toolbar:** Category Filter using `SearchableFilterDropdown` (`All Categories`) with pinned `Search / Type here...` search box and 0ms live filtering. Orange Search button removed; reactive filtering on selection; Reset button aligned in straight line.
 
 
 
@@ -3559,12 +3582,12 @@ Manage complete vendor team directory:
 ### 18.2. Provinces / States (`/masters/states`)
 
 - **Fields:** Country (*Required dropdown*), State / Province Name (*Required*), State Code, Status.
-
-
+- **Top Filter Toolbar:** Country Filter using `SearchableFilterDropdown` (`All Countries / National Levels`) with pinned `Search / Type here...` search box and 0ms live filtering. Orange Search button removed; reactive filtering on selection; Reset button aligned in straight line.
 
 ### 18.3. Cities (`/masters/cities`)
 
 - **Fields:** Country (*Required*), State / Province (*Required, scoped to Country*), City Name (*Required*), City Code, Status.
+- **Top Filter Toolbar:** Country Filter (`All Countries`) and cascading Province/Region Filter (`All Provinces / Regions`) using `SearchableFilterDropdown` with instant search and straight-line Reset button.
 
 
 
@@ -4650,6 +4673,7 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
 | **TC-SYNC-04** | Product Deletion Removal | Delete a product in Yinglima (`DELETE /api/v1/masters/products/{id}`). | Yinglima sends `product.deleted`. Inhyma soft-deletes the product (`deleted_at` set). Product is removed from both Active and Inactive views in Inhyma. |
 
 | **TC-SYNC-05** | Reverse Inactivation Immunity | Set a product to Inactive directly in Inhyma ERP. | The product becomes inactive in Inhyma, but Yinglima's product remains Active. Zero reverse sync occurs. |
+| **TC-SYNC-06** | Dual-Mode Catalog Coexistence | Add a product manually in Inhyma via `+ New Product` while synced products exist. | Manual product appears immediately in Inhyma Product Master. Both synced and manually created products display, paginate, and are selectable across all downstream modules without query blockade. |
 
 
 
@@ -4665,6 +4689,75 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
 | **TC-SP-11** | Post-Edit Sale Order Instant Cache Sync | 1. Edit a sale order via `/sale/process/:id/edit`.<br>2. Update remarks, container number, or line item and save.<br>3. View the order immediately in `/sale/process`. | • Form saves and redirects to list.<br>• Updated order renders immediately in list and detail modal with zero stale lag. |
 | **TC-INQ-12** | Regulated Product License Red Highlighting & Remark in Inquiry List | 1. Open `/inquiries` for a consignment containing a regulated product (e.g. `Test 1` where Product Master has `license_certificate_required`).<br>2. Inspect the left product card list.<br>3. Select the product card to view the right details pane.<br>4. Open Add Item modal and pick a regulated product. | • The product card is prominently highlighted in **RED** with soft red background and red border.<br>• Displays a bold `⚠️ LICENSE NEEDED` badge.<br>• Displays a dashed red remark banner with the exact license/certificate details.<br>• Right pane shows an explicit compliance warning banner.<br>• Add Item modal alerts the user during selection. |
 
+### 43. Global Filter Options Card Standardization & Universal Reset Filters Button
+
+#### 43.1. Test Cases & Verification Matrix
+
+| Test ID | Test Scenario | Steps | Expected Result |
+| :--- | :--- | :--- | :--- |
+| **TC-FILT-01** | Local Purchases Filter Header & Reset Button | 1. Navigate to `/purchase/local`.<br>2. Click the filter funnel button.<br>3. Inspect the top header of the filter card.<br>4. Select a Supplier, Status, and date range.<br>5. Click `Reset Filters`. | • Filter card header displays `<svg>` Funnel Icon + `Filter Options` on the left.<br>• Top-right shows a permanent `Reset Filters` button (`#f1f5f9` background, slate text).<br>• Clicking `Reset Filters` clears all selections, resets search, and returns pagination to Page 1. |
+| **TC-FILT-02** | Sale Process Filter Header & Reset Button | 1. Navigate to `/sale/process`.<br>2. Click the filter funnel button.<br>3. Inspect the top header row of the filter card.<br>4. Select a Buyer, enter a consignment code, and pick a currency.<br>5. Click `Reset Filters`. | • Filter card header displays `Filter Options` with active count badge on left and `Reset Filters` on top-right.<br>• Inputs have title-cased labels above them and uniform 38px heights.<br>• Clicking `Reset Filters` instantly resets Buyer, Consignment, Currency, Dates, and Search, returning to Page 1. |
+| **TC-FILT-03** | Provinces (States) Filter Header & Field Label | 1. Navigate to `/masters/states`.<br>2. Click the filter funnel button.<br>3. Inspect the Filter Options card. | • Header displays `Filter Options` on left and `Reset Filters` on top-right.<br>• The dropdown has a clear label `Country / National Level` positioned above it.<br>• Clicking `Reset Filters` clears the country filter and search, and reloads the full list. |
+| **TC-FILT-04** | Cities Filter Header & Cascading Labels | 1. Navigate to `/masters/cities`.<br>2. Click the filter funnel button.<br>3. Inspect the Filter Options card. | • Header displays `Filter Options` on left and `Reset Filters` on top-right.<br>• Two columns display labels `Country` and `Province / Region` above each searchable dropdown.<br>• Clicking `Reset Filters` resets both dropdowns to default. |
+| **TC-FILT-05** | Product Prices Filter Header & Reset Button | 1. Navigate to `/product-prices`.<br>2. Click the filter funnel button.<br>3. Inspect the Filter Options card. | • Header displays `Filter Options` on left and `Reset Filters` on top-right.<br>• All 4 filter dropdowns (Category, Sub Category, Brand, Pricing Status) span a clean, responsive 4-column grid.<br>• Clicking `Reset Filters` resets all 4 filters and text search in one click. |
+| **TC-FILT-06** | Product Gallery Filter Header & Reset Button | 1. Navigate to `/product-gallery`.<br>2. Inspect the top filter card.<br>3. Select a category, sub-category, and enter search text.<br>4. Click `Reset Filters`. | • Header displays `Filter Options` on left and `Reset Filters` on top-right.<br>• Search, Category, Sub Category, and Brand are arranged with uniform labels.<br>• Clicking `Reset Filters` clears all fields back to default. |
+
 ---
 
-*End of Master Features & Testing Specification Manual. Maintained for Yinglima Enterprise ERP.*
+## 42. MULTI-ERP FEDERATION: Ecosystem SSO Bridge, Canonical Keys & Dynamic Registry Routing
+
+### 42.1. Module Overview & Architectural Specification
+- **Component File Map:**
+  - Backend: `app/federation/erp_keys.py`, `app/auth/routes.py`
+  - Frontend: `frontend/src/lib/ssoBridge.ts`, `frontend/src/pages/Login.tsx`, `frontend/src/pages/Users.tsx`
+- **Canonical ERP Key Normalization:**
+  - `canonical_erp_key(raw)` strips hyphens, underscores, whitespace, and `erp` suffixes (e.g. `yinglima-erp` $\rightarrow$ `yinglima`).
+  - Ensures seamless key matching between ERP_Main registry (`allowed_erps`) and spoke authorization policies without false 403 Forbidden errors.
+- **SSO Handover Resilience & Session Preservation:**
+  - If incoming SSO handover returns HTTP 401 due to a local account error in this ERP (e.g. "No account exists for you in this ERP", "Account is deleted or disabled"), the central ecosystem cookie is explicitly PRESERVED.
+  - The user remains logged in centrally and can freely access other permitted ERPs without global logout.
+- **Dynamic Control Plane Routing:**
+  - All redirection and dashboard fallbacks dynamically query `controlPlaneUrl(central)` from the ERP registry (`getEcosystemErps()`). Hardcoded port numbers (e.g. `http://localhost:5170`) are eliminated.
+  - Users with no access or redirected after denial land on the control plane with explicit `sso_error=no_access` and `sso_reason` parameters.
+
+### 42.2. Test Cases & Verification Matrix
+
+| Test ID | Test Scenario | Steps | Expected Result |
+| :--- | :--- | :--- | :--- |
+| **TC-SSO-01** | Canonical Key Matching | In ERP_Main, configure user access with `yinglima` or `yinglima-erp`. Authenticate via SSO handover into Yinglima. | Backend `erp_keys.py` canonicalizes key; user receives spoke token pair; lands on Yinglima dashboard. |
+| **TC-SSO-02** | Local Account Problem Does Not Kill Central Session | In Yinglima, deactivate the local user account while keeping central user active. Attempt SSO into Yinglima. | Yinglima refuses access with 401/403 and displays informative denial banner. Central session cookie is retained; switching to Inhyma or Control Plane remains authenticated. |
+| **TC-SSO-03** | Dynamic Control Plane Re-Routing | Attempt to open Yinglima with an account that only has access to Inhyma. | System redirects to the central control plane / dashboard with `sso_error=no_access` and `sso_reason` explaining the denial; zero hardcoded localhost:5170 redirects. |
+| **TC-SSO-04** | Central Users Link Resolution | Navigate to `/users` in Yinglima. Inspect Central Users button link. | Target URL dynamically matches configured control-plane host from registry without fallback port assumptions. |
+
+---
+
+## 43. RUNNER PROCESS SUPERVISION: Port Pre-Flight Hygiene, Fast-Fail Health Checks & Scoped Hot Reload
+
+### 43.1. Module Overview & Architectural Specification
+- **Component File Map:**
+  - Root Runner: `run_all.py`
+  - Backend Bootstrap: `run.bat`
+  - Frontend Proxy: `frontend/vite.config.ts`
+- **Port Conflict Hygiene & Orphan Reclaiming:**
+  - Automated TCP port scanning via `netstat -ano -p tcp` detects orphaned background processes occupying ports (5170, 5173, 5174, 8000, 8001, 8002).
+  - Stale process trees are terminated before new instances are spawned, preventing `[Errno 10048]` socket address collision crashes.
+- **Fast-Fail Health Probing:**
+  - `wait_for_backend_health` checks child process status (`proc.poll()`) on every polling cycle, failing immediately upon unexpected crashes instead of blocking for the full timeout.
+- **Scoped WatchFiles Hot Reload:**
+  - Restricts backend file watching strictly to the `app` package directory (`--reload-dir app`), eliminating restart storms caused by caches, tests, migrations, or temporary file writes.
+- **Vite Proxy Disconnect Shield:**
+  - Catches transient `ECONNRESET`, `ECONNREFUSED`, and `socket hang up` notices in the Vite HTTP/WS proxy during backend reload/restart, suppressing terminal pollution.
+
+### 43.2. Test Cases & Verification Matrix
+
+| Test ID | Test Scenario | Steps | Expected Result |
+| :--- | :--- | :--- | :--- |
+| **TC-RUN-01** | Clean Ecosystem Startup | Launch `python run_all.py` from root workspace. | All 3 backends and all 3 frontends start in order; health endpoints return HTTP 200; all 6 services report healthy. |
+| **TC-RUN-02** | Scoped Reload Immunity | Modify a non-app file (e.g. `.pytest_cache`, documentation, or test file). | Backend server continues running without triggering a WatchFiles server restart. |
+| **TC-RUN-03** | Immediate Exit on Crash | Force an early backend crash (e.g. invalid port configuration). | Runner immediately reports process exit code and terminates wait cycle without hanging for 180 seconds. |
+| **TC-RUN-04** | Graceful Multi-Service Shutdown | Send SIGINT (`Ctrl+C`) to the running master runner. | All 6 services and child process trees terminate cleanly without leaving orphaned listening sockets. |
+| **TC-PP-MODAL-01** | Product Prices Add Quote Modal at 100% Zoom | At 100% browser zoom on `/inventory/product-prices`, click `+ Quote` or `+ Assign` on any product. | All fields align cleanly with the top product banner, and both `Cancel` and `+ Add Supplier Quote` / `Save Supplier Quote` buttons are fully visible inside the white modal card without needing to zoom out. |
+| **TC-SALE-LP-01** | Sale Process Auto-Load from Inwarded Local Purchase | Create a Local Purchase for a product (e.g. `DAR-00208`), inward it into stock (`Received / Inwarded`), then auto-load a consignment containing `DAR-00208` in `/sale/process/new`. | Sale Process automatically populates `Supplier` (`✓ Local Purchase`), `Unit Price (RMB) Including VAT`, `Excluding VAT`, `Including Profit %`, `FOB Price (USD)`, and `CFR Price/Unit` from the inwarded Local Purchase. |
+
+---
+*End of Master Features & Testing Specification Manual. Maintained for Yinglima Enterprise ERP. Last updated: October 2026 (Sections 42-43: Multi-ERP Ecosystem SSO Bridge, Canonical ERP Keys, Dynamic Registry Routing, Central Session Resilience, Master Runner Process Supervision, and Scoped Reload).*

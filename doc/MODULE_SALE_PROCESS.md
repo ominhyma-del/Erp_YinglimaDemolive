@@ -170,7 +170,6 @@ To maintain a synchronized single source of truth for physical inventory, stock 
    - When sufficient stock is verified, the system atomically creates an official `StockMovement` (type `outward`, `OUT-YYYY-XXXX`).
    - Deducts quantities from the warehouse live inventory ledger.
    - Transitions order status to `dispatched`.
-   - Links `stock_movement_id` and `stock_movement_number` on `sales_orders`.
    - The list row renders an official `● DISPATCHED` badge with a direct link to the generated outward voucher.
 
 ---
@@ -192,5 +191,42 @@ To eliminate blank loading spinners and latency across `/sale/process`, `/sale/p
    - Planning sheets (`/planning/sheets`) are cached in memory to eliminate network delays when creating new orders.
    - On save/patch, the updated order is pushed synchronously to `updateSaleOrderInCache()` prior to navigation, ensuring the list immediately reflects changes without stale data.
 
+---
 
+## 10. Filter Options Card Standardization & Reset Filters Button (Release 2026-10-27)
+
+### Purpose & Architecture
+To ensure visual and operational consistency across the entire ERP, the collapsible filter panel in [`SaleProcessList.tsx`](file:///d:/Om%20work1/ERP/Yinglima_ERP/frontend/src/pages/sales/SaleProcessList.tsx) was standardized to match the gold standard layout established in Suppliers and Buyers.
+
+### Key Features:
+1. **Standard Header Row:**
+   - **Top-Left:** Funnel icon with bold title `Filter Options` and an active filter count pill (`{activeFiltersCount} active`).
+   - **Top-Right:** Permanent, prominent `Reset Filters` button (`background: #f1f5f9`, border `#cbd5e1`, slate text `#475569`, bold, rounded 6px).
+2. **One-Click Filter Reset:**
+   - Clicking `Reset Filters` immediately clears:
+     - `selectedBuyerId` (resets to "All Buyers")
+     - `selectedConsignment` (clears consignment code)
+     - `selectedCurrency` (resets to "All Currencies")
+     - `dateFrom` and `dateTo` (clears date range)
+     - `search` (clears order / consignment text search)
+     - Resets pagination back to Page 1.
+3. **Structured Inputs & Field Labels:**
+   - All filter controls (`Buyer Company`, `Consignment Code`, `Currency`, `Date From`, `Date To`) are arranged in a responsive grid with uniform 38px heights and title-cased labels placed cleanly above each input.
+
+---
+
+## 11. Local Purchase Costing Resolution: Confirmed & Received / Inwarded Support with Consignment Priority (Release 2026-10-28)
+
+### Purpose & Business Rule (Strict Option A — Local Purchase Only, Zero Fallback)
+When auto-loading a consignment column (`extract_consignment_items`) or adding a product (`get_product_costing_info`) in the Sale Process module (`backend/app/sales/service.py`), the system populates `Supplier`, `Unit Price (RMB) Including VAT`, `Unit Price (RMB) Excluding VAT`, `Including Profit %`, `FOB Price (USD)`, and `CFR Price/Unit` strictly from finalized Local Purchase invoices:
+
+1. **Valid Local Purchase Statuses (`Confirmed` + `Received / Inwarded`):**
+   - Queries `LocalPurchase` records where `status IN ('Confirmed', 'Received / Inwarded', 'Inwarded', 'Completed')` and `deleted_at IS NULL`.
+   - Ensures that Local Purchases that have already been inwarded into warehouse stock (`Received / Inwarded`) continue to populate costing and supplier details in Sale Process.
+   - `Draft` and `Cancelled` Local Purchases are strictly excluded.
+2. **Two-Tier Priority Resolution:**
+   - **Priority 1 (Exact Consignment Match):** If a finalized Local Purchase exists for that product under the exact same consignment (`planning_column_id == col.id` or `consignment_code == col.name`), its supplier and unit rate are prioritized first.
+   - **Priority 2 (Latest Finalized Local Purchase):** Otherwise, the most recent finalized Local Purchase (`ORDER BY invoice_date DESC, created_at DESC`) for that product is used.
+3. **Strict Zero Fallback Rule:**
+   - If a product has no finalized Local Purchase record, `unit_price_rmb_with_vat` remains `0.00` and `supplier_name` remains `None` (no fallback to Product Prices catalog quotes).
 

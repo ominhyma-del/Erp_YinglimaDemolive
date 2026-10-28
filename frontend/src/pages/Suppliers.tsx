@@ -66,7 +66,7 @@ import {
   toQueryString,
 } from "@/lib/api";
 import { createNameResolver } from "@/lib/nameResolver";
-import { useAuth, useSrNoJump, isSrNoQuery, usePendingGuard, useModalHistorySync } from "@/lib/hooks";
+import { useAuth, useSrNoJump, usePendingGuard, useModalHistorySync } from "@/lib/hooks";
 import { useLiveConnectionStatus } from "@/lib/live/useLive";
 import { useLiveList } from "@/lib/live/useLiveList";
 import type {
@@ -1390,19 +1390,10 @@ export function SuppliersPage() {
     return list;
   }, [rows, sortColIndex, sortDirection, resolver, namesVersion]);
 
-  /* --- Search debounce with Sr. No. jump --- */
+  /* --- Search debounce --- */
   useEffect(() => {
     const timer = setTimeout(() => {
       const raw = searchInput.trim();
-      if (raw && isSrNoQuery(raw)) {
-        const srNo = parseInt(raw, 10);
-        if (srNo >= 1) {
-          setCurrentPage(Math.ceil(srNo / pageSize));
-          setEffectiveSearch("");
-          srNoJump.request(srNo);
-          return;
-        }
-      }
       srNoJump.clear();
       setCurrentPage(1);
       setEffectiveSearch(raw);

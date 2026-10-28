@@ -145,6 +145,14 @@ The top filter section enables multi-criteria filtering across the supplier dire
 10. **Potential** (`Yes` / `No` / `All`)
 11. **Visited Factory / Office?** (`Yes` / `No` / `All`)
 
+### 3.1.1 Full-Text Search Input Specifications
+The search input (`Search company, country, contact, city, phone...`) performs deep matching across all visible and related supplier data:
+* **Company & Contact Names:** Case-insensitive substring matching plus space and hyphen normalization (e.g. `Chen Wei` matches `Chen-Wei` or `ChenWei`).
+* **Phone Numbers (Digit Normalization):** Compares stripped digits via `regexp_replace(phone, '\D', '', 'g') ILIKE '%digits%'` so searching raw digits (`9561914519` or `13800138000`) instantly matches formatted numbers (`+91 9561914519`, `+86 138-0013-8000`). Checks calling numbers, WhatsApp, and WeChat numbers on both primary and all child `SupplierContact` records.
+* **Child Contacts & Emails:** Searches secondary contact person names, designations, WeChat IDs, and child emails (`SupplierEmail`).
+* **Geographic Masters:** Resolves linked `Country.name`, `Country.code`, `State.name`, and `City.name` via foreign keys.
+* **Catalog Products & Categories:** Searches linked products (`product_name`, `product_code`, `product_name_tally`, `product_name_invoice`) and linked category/subcategory names.
+
 ### 3.2 List Table Columns & In-Line Actions
 * **Checkbox:** Selection for bulk actions and exports.
 * **Sr. No.:** Sequential row indexing.
@@ -561,4 +569,22 @@ Downstream procurement modules (e.g. **Local Purchase Order**, **Local Purchases
 3. **Frontend Tab Switching & Clean Loading State:**
    - Switching between Active and Inactive immediately clears the table rows (`setRows([])`) to eliminate UI flicker.
    - The frontend fallback cache strictly distinguishes default queries on the Active tab from the Inactive tab, ensuring the Inactive tab always reflects true database state.
+
+---
+
+### 7.11 Comprehensive Multi-Field Search & Digit-Normalized Phone Search
+
+The supplier list search bar (`placeholder="Search company, country, contact, city, phone..."`) executes a deeply integrated database search matching all displayed and linked vendor metadata:
+
+1. **Digit-Normalized Phone Search:**
+   - Phone numbers stored with international formatting, spaces, or hyphens (e.g. `+91 9561914519` or `+86 138-0013-8000`) match even when users search raw unformatted digits (e.g. `9561914519`, `+919561914519`, or `13800138000`).
+   - Uses `regexp_replace(col, '\D', '', 'g') ILIKE '%digits%'` across both primary vendor phone columns (`contact_calling_number`, `contact_whatsapp_number`, `contact_wechat_number`) and child contact records (`SupplierContact.calling_number`, `whatsapp_number`, `wechat_number`).
+2. **Contact Persons & WeChat IDs:**
+   - Child contact roster members (`SupplierContact.person_name`, `designation`, `email`, `calling_number`, `whatsapp_number`, `wechat_number`) are matched directly through `exists()` subqueries.
+3. **Geography & Master Tables:**
+   - Searches match country names and codes (`Country.name`, `Country.code`), province/state names (`State.name`, `State.code`), and city names (`City.name`).
+4. **Space and Hyphen Normalization:**
+   - Strips whitespace and hyphens for company and contact names to support variations (e.g. "Young Sun" vs "Youngsun").
+5. **Products & Categories:**
+   - Matches linked product categories, sub-categories, and catalogue products (`product_name`, `product_code`, `product_name_tally`, `product_name_invoice`).
 

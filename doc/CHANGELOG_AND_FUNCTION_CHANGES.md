@@ -3,6 +3,120 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
+## [Release 2026-10-28] — Sale Process Local Purchase Costing Resolution & Product Prices Quote Modal 100% Zoom Fix
+
+### 0. Product Prices "+ Add New Supplier Quotation" Modal 100% Zoom Footer Visibility Fix (`ProductPrices.tsx` & `style.css`)
+- **Root Cause:** `.modal-card form > :not(.form-actions):not(.modal-footer)` in `style.css` applied `padding: 20px 24px` to every direct child `<div>` inside `<form>`, adding 160px of vertical height and pushing the `Cancel` and `+ Add Supplier Quote` footer buttons outside the `max-height: 90vh` `.modal-dialog-card` box at 100% zoom.
+- **Fix:** Wrapped the form fields inside a single body container (`padding: 0, gap: 12px`), aligned all fields flush with the top banners, reduced textarea height to `rows={2}`, and added `max-height: none !important; margin: auto !important` on `.modal-dialog-card.modal-overflow-visible` and `overflow-y: auto !important` on `.modal-centered-backdrop` so the entire modal and its Save/Add button fit comfortably at 100% zoom.
+
+### 1. Root Cause & Fix (`backend/app/sales/service.py`)
+- **Included `Received / Inwarded` Local Purchases in Sale Process Costing (`extract_consignment_items` & `get_product_costing_info`):**
+  - Previously, `SaleService` filtered `LocalPurchase.status == "Confirmed"` only. Once a Local Purchase invoice was inwarded into warehouse stock (`status = "Received / Inwarded"`), auto-loading a consignment in Sale Process ignored the inwarded purchase and returned `0.00` for `Unit Price (RMB) Including VAT` and blank `Supplier`.
+  - Updated `valid_lp_statuses = ("Confirmed", "Received / Inwarded", "Inwarded", "Completed")` in both `extract_consignment_items` and `get_product_costing_info`.
+- **Consignment-First Priority Resolution (Strict Option A — No Catalog Fallback):**
+  - **Priority 1:** Matches finalized Local Purchase invoices linked to the exact consignment column (`planning_column_id` or `consignment_code`).
+  - **Priority 2:** Falls back to the latest finalized (`Confirmed` or `Received / Inwarded`) Local Purchase invoice for that product across the ERP (`ORDER BY invoice_date DESC, created_at DESC`).
+  - **Strict No-Fallback Rule:** Never falls back to Product Prices catalog quotes; if no finalized Local Purchase exists for a product, rate remains `0.00` and supplier remains blank.
+
+## [Release 2026-10-27 Part 5] — Comprehensive Multi-Field Search & Digit-Normalized Phone Search Across ERP
+
+### 1. Root Cause Resolution & Unified Search Accuracy
+- **Truth in Search Placeholders Across the ERP:**
+  - Resolved systemic search failures where inputs advertised multiple searchable fields (e.g. `Search company, country, contact, city, phone...`) but in reality failed when users searched phone numbers, contacts, cities, or organization names.
+- **Digit-Normalized Phone Matching (`func.regexp_replace`):**
+  - Previously, searching unformatted digits (e.g., `9561914519` or `+919561914519` or `13800138000`) against formatted telephone numbers stored with spaces, country codes, or dashes (e.g., `+91 9561914519`, `+86 138-0013-8000`) failed due to exact substring mismatches.
+  - Added clean digit normalization comparing stripped digits (`regexp_replace(col, '\D', '', 'g') ILIKE '%digits%'`) for all search queries containing 3 or more digits.
+- **Space and Hyphen Normalized Entity Matching:**
+  - Added space and hyphen normalization (`func.lower(func.replace(func.replace(col, ' ', ''), '-', '')).like(clean_pattern)`) for company and contact names across all repositories.
+
+### 2. Module Search Enhancements
+- **Suppliers Frontend (`Suppliers.tsx`) & Backend (`SupplierRepository._apply_search`):**
+  - **Frontend Search Hijacking Fixed:** Discovered that typing any phone number consisting of bare digits (e.g., `9561914519` or `13800138000`) was matched by `isSrNoQuery(raw)` (`/^\d+$/`). The frontend previously treated this as a "Sr. No. jump", cleared `effectiveSearch = ""` and jumped to row 9,561,914,519, completely suppressing the search request. Removed this interception so phone numbers, tax IDs, and numeric queries are sent directly to the backend search query.
+  - **Phone Numbers:** Added raw and digit-normalized matching for primary numbers (`contact_calling_number`, `contact_whatsapp_number`, `contact_wechat_number`) and all secondary child contacts in `SupplierContact` (`calling_number`, `whatsapp_number`, `wechat_number`).
+  - **Contacts:** Child contact person names, designations, WeChat IDs, and emails are fully queried.
+  - **Geography & Master Links:** Linked Countries (`Country.name`, `code`), Provinces/States (`State.name`, `code`), and Cities (`City.name`) are matched via `exists()` subqueries.
+  - **Products & Taxonomy:** Linked Categories, Sub-Categories, and Catalog Products (`product_name`, `product_code`, `product_name_tally`, `product_name_invoice`) match directly.
+- **Buyers (`BuyerRepository._apply_search`):**
+  - **City & Address:** Fixed omission of `Buyer.city` and `Buyer.address` in direct search columns.
+  - **Province / State:** Added `State` subquery matching (`State.name`, `code` via `Buyer.state_id`).
+  - **Phone Numbers:** Added digit-normalized phone search across primary contact numbers and child `BuyerContact` records.
+  - **Child Contacts & Emails:** Added full `BuyerContact` and `BuyerEmail` search integration.
+- **Product Master (`ProductRepository._apply_search`):**
+  - Added overridden `_apply_search` querying product codes, tally names, invoice names, barcodes, specifications, and descriptions.
+  - Added space and hyphen normalized matching (`DAR 00099` matches `DAR-00099`, `GF 100` matches `GF100`).
+  - Added deep subquery search over linked Categories (`ProductCategory.name`, `code`), Sub-Categories (`ProductSubCategory.name`, `code`), Brands (`Brand.name`, `code`), HSN codes (`HsnCode.code`, `description`), and Primary/Secondary Quoting Suppliers (`Supplier.company_name`, `brand_description`).
+- **Product Prices (`ProductPriceRepository.list_product_prices`):**
+  - Added matching over Primary Suppliers (`s.id = p.supplier_id`), Supplier Brand Descriptions (`s.brand_description`), and space/hyphen normalized product codes and tally/invoice names.
+- **Local Purchases (`LocalPurchaseRepository.list_with_filters`):**
+  - Fixed search placeholder promise `Search invoice, supplier, org...`.
+  - Added direct matching on `LocalPurchase.organization_name`, `branch_name`, and `consignment_code`.
+  - Added linked line item product search via `exists()` over `LocalPurchaseItem.product_name`, `product_code`, and `hsn_code`.
+- **Sale Process (`SaleRepository.list_with_filters`):**
+  - Enhanced search to cover `organization_name`, `buyer_branch_name`, `transporter_name`, and line item products (`SaleOrderItem.product_name`, `product_code`, `supplier_name`, `hsn_code`).
+- **Universal Topbar Search (`search_universal` in `app/search/service.py`):**
+  - Extended Supplier and Buyer search blocks to match primary and child contact phone numbers (both formatted and unformatted digits), secondary contacts, and city/addresses.
+
+## [Release 2026-10-27 Part 4] — Global ERP Filter Card Standardization & Universal Reset Filters Button
+
+### 1. Unified Standard Across All ERP Filter Panels
+- **Consistent Top Header Row Across Modules:**
+  - Standardized every expandable/top filter panel across Yinglima ERP to include the unified header row:
+    - **Top-Left:** `<svg>` Funnel Icon + bold title **`Filter Options`** with active filter counter badge (`{activeFiltersCount} active`).
+    - **Top-Right:** Permanent, prominent **`Reset Filters`** button (`background: #f1f5f9`, border `#cbd5e1`, text `#475569`, bold, rounded 6px).
+    - **Uniform 38px Field Inputs:** All dropdowns, text inputs, and date pickers follow uniform 38px heights with clear labels positioned above each input (`color: #475569`, `fontSize: 12px`, `fontWeight: 600`).
+    - **Zero-Latency Reactive Filtering:** Selecting any filter applies instantaneously without requiring any obsolete orange search buttons.
+
+### 2. Module Implementations & Fixes
+- **Sales Process (`SaleProcessList.tsx`):**
+  - Added the missing `Filter Options` header row with the permanent `Reset Filters` button.
+  - Eliminated the redundant bottom "Clear All Filters" button.
+  - Clicking `Reset Filters` resets Buyer, Consignment Code, Currency, Date From/To, and search inputs back to defaults and returns pagination to Page 1.
+- **Local Purchases (`LocalPurchases.tsx`):**
+  - Made the top-right `Reset Filters` button permanently visible upon opening the filter panel (previously conditionally hidden when filters were empty).
+  - Standardized styling to match the Suppliers and Buyers reference standard (`#f1f5f9` button).
+  - Clears Supplier, Status, From Date, To Date, and Search input, restoring Page 1.
+- **Master Data Pages (`MasterPage.tsx`, `States.tsx`, `Cities.tsx`, `SubCategories.tsx`):**
+  - Transformed the single-line inline filter box in `MasterPage.tsx` into the full standard `Filter Options` card with the header row and top-right `Reset Filters` button.
+  - Added structured title-cased labels above dropdowns:
+    - **Provinces (`States.tsx`):** Added `Country / National Level` label above the searchable country dropdown.
+    - **Cities (`Cities.tsx`):** Added `Country` and `Province / Region` labels in a clean responsive grid.
+    - **Sub-Categories (`SubCategories.tsx`):** Added `Category` label above the category dropdown.
+- **Product Prices (`ProductPrices.tsx`):**
+  - Standardized the expandable filter card with the `Filter Options` header row and top-right `Reset Filters` button, allowing Category, Sub-Category, Brand, and Pricing Status to span a clean 4-column grid.
+- **Product Gallery (`ProductGallery.tsx`):**
+  - Added the `Filter Options` header row and `Reset Filters` button, allowing quick clearing of Search, Category, Sub-Category, and Brand in one click.
+
+## [Release 2026-10-27 Part 3] — Master Top Filters Searchable Dropdown Overhaul & Search Button Removal
+
+### 1. Unified Searchable Dropdown in Top Filter Bars (`SearchableDropdown.tsx`)
+- **Direct Options & Instant Client-Side Search:**
+  - Enhanced `SearchableFilterDropdown` to support direct `options?: DropdownOption[]` alongside asynchronous `fetchOptions`.
+  - Added auto-focus to the search input (`placeholder="Search / Type here..."`) upon opening.
+  - Implemented 0ms instant synchronous filtering over direct options with support for label and `sublabel` secondary metadata.
+  - Added clean "All ..." default option at the top of the popover and a quick-clear hover icon (`✕`) on the trigger when a selection is active.
+  - Configured uniform 38px height and clean borders (`1px solid #cbd5e1`), with subtle focus ring (`0 0 0 3px rgba(37, 99, 235, 0.12)`) and popover shadow.
+
+### 2. Complete Removal of the Orange Search Button & Straight-Line Alignment (`MasterPage.tsx`)
+- **Search Button Elimination:**
+  - Removed the orange `[Search]` button completely from `MasterPage.tsx` top filter bar across all Master tables.
+  - All filter changes apply reactively in real time upon selection via `extraFilters` change detection.
+- **Straight-Line Layout Alignment:**
+  - Re-aligned top filter container to a clean horizontal flex layout with `alignItems: "center"`, `gap: "14px"`, and uniform 38px component height across filter dropdowns and the `[Reset]` button.
+  - Upgraded `[Reset]` button to a subtle slate button with a reset circular arrow SVG icon and hover feedback.
+
+### 3. Module Upgrades
+- **Provinces / States (`States.tsx`):**
+  - Replaced raw browser `<select>` with `SearchableFilterDropdown` for Country (`All Countries / National Levels`), eliminating manual scrolling through 200+ countries.
+- **Sub-Categories (`SubCategories.tsx`):**
+  - Replaced raw browser `<select>` with `SearchableFilterDropdown` for Category (`All Categories`).
+- **Cities (`Cities.tsx`):**
+  - Added top toolbar filter with two searchable dropdowns: Country (`All Countries`) and cascading Province/Region (`All Provinces / Regions` scoped to selected Country).
+- **Product Master (`Products.tsx`):**
+  - Added **HSN Code** searchable filter (`All HSN Codes`) alongside Category, Sub-Category, and Brand.
+  - Upgraded all 4 product master filters to direct options with instant search and 4-column aligned layout.
+- **Product Prices (`ProductPrices.tsx`):**
+  - Upgraded Pricing Status dropdown from native `<select>` to `SearchableFilterDropdown` and aligned the Reset button.
+
 ## [Release 2026-10-27 Part 2] — Global Active-Only Fetching Enforcement & Supplier Inactive Tab Cache Fix
 
 ### 1. Supplier Inactive Tab Fix (`routes.py`, `service.py`, `Suppliers.tsx`)
@@ -398,7 +512,45 @@
   - Updated endpoint `POST /api/v1/purchases/local/{purchase_id}/inward` to strictly require `require_permission('local_purchase.inward')`.
   - Seeded permission in PostgreSQL `permissions` table, linked to `super_admin`, and added to `seed_module_permissions.py` and `permissionLabels.ts`.
 
+---
 
+## [Release 2026-10-27] — Master Runner Resilience, Vite Proxy Error Handling & Scoped Hot Reload
+
+### 1. Scoped WatchFiles Hot Reload (`run.bat`, `run_all.py`)
+- **Restricted Reload Directory:** Configured Uvicorn startup `--reload-dir app` to watch strictly application code changes, preventing spurious full server reloads from tests, caches, `.pytest_cache`, logs, or temporary files.
+- **Fast Startup & Readiness Checks:** Verified `/api/v1/health/live` probe compatibility and added bounded retries with instant crash detection to prevent prolonged wait times.
+
+### 2. Vite WebSocket & API Proxy Resilience (`vite.config.ts`)
+- **Suppressed Transient Socket Disconnects:** Added a proxy error handler to ignore transient `ECONNRESET`, `ECONNREFUSED`, and `socket hang up` notices when the backend is reloading or restarting during local development.
+
+---
+
+## [Release 2026-10-26] — Product Master Dual-Mode Coexistence (Synced from Yinglima & Manually Added in Inhyma)
+
+### 1. Unified Catalog Loading & De-Scoping Restrictive Query Blocks
+- **Problem & Root Cause:**
+  - Inhyma Product Master was artificially filtering products by requiring presence in `SyncedEntityMapping` or matching a hardcoded Inhyma organization UUID (`85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5`), and discarding non-matching codes in the frontend table.
+  - This blocked newly added manual products from appearing or updating the record count.
+- **Resolution:**
+  - Reverted restrictive dynamic filtering in repository and frontend to standard catalog query without hardcoded UUID or sync subquery constraints.
+  - Enabled seamless dual-mode coexistence: items synced from Yinglima and items manually created/imported in Inhyma are stored as standard records in `products` and load side-by-side with full pagination, search, sorting, and downstream ERP transactions support.
+
+---
+
+## [Release 2026-10-26] — Ecosystem SSO Bridge, Canonical ERP Key Normalization & Central Session Resilience
+
+### 1. Canonical ERP Key Normalization (`app/federation/erp_keys.py`)
+- **Key Normalization Engine:** Standardized `canonical_erp_key(raw)` to strip hyphens, underscores, spaces, and `erp` suffixes (e.g. `yinglima-erp` $\rightarrow$ `yinglima`).
+- **Access Evaluation Hardening:** Aligned `erp_access_matches(allowed_erps, target)` and `describe_denial()` with ERP_Main control-plane registry, removing redundant `str()` conversions and preventing false-positive access denials during single-sign-on (SSO) handover.
+
+### 2. Central Session Resilience & Account Error Isolation (`ssoBridge.ts`, `Login.tsx`)
+- **Central Session Protection on Local Account Issues:** If SSO handover returns HTTP 401 due to a local account problem in this specific ERP ("No account exists for you", "account is not active", "must explicitly grant access"), the central ecosystem cookie is retained rather than deleted. The user remains logged in centrally and can access other permitted ERPs without global session disruption.
+- **Dynamic Control Plane Routing:** Replaced hardcoded fallback URL (`http://localhost:5170/dashboard`) with `controlPlaneUrl(central)` dynamically loaded from the ERP registry. If a user is not permitted on this spoke, they are re-routed to their designated ERP or central dashboard with `sso_error` and detailed `sso_reason` parameters.
+
+### 3. User Management Control Plane Alignment (`Users.tsx`)
+- Standardized `centralUsersUrl` to resolve the control plane host strictly from the active ERP registry (`getEcosystemErps()`), eliminating hardcoded local development ports.
+
+---
 
 ## [Release 2026-10-23] — Local Purchase Consignment Supplier Filtering & Shipment Planning All Entities Navigation Fix
 
@@ -578,7 +730,7 @@
 ### 2. Zero-Data-Loss Protection & Strict Organization Scoping
 - **Safe Isolation & Preservation of Non-Inhyma and Local Products:**
   - Preserved Darsh Impex (652 items), FNB Solution (769 items), and native domestic Indian spare parts (`INH-xxxxx`, 935 items) in Inhyma ERP's database with zero deletions or schema corruption.
-  - Inhyma ERP Product Master frontend (`/product/list`) now strictly queries with `synced_from=yinglima&organization_id=85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5`, filtering out Darsh Impex, FNB Solution, and domestic `INH-` spare parts, so only the 873 products originating from Yinglima are displayed.
+  - Inhyma ERP Product Master frontend (`/product/list`) and backend repository now query with `organization_id=85c12bcb-10a1-4b1f-92ed-6ca72ac1b3b5`, supporting both Yinglima-synced products and newly added native Inhyma products while filtering out Darsh Impex, FNB Solution, and legacy domestic `INH-` spare parts.
   - **Strict One-Way Lifecycle:**
     - Deactivating a product in Yinglima automatically deactivates it in Inhyma.
     - Deleting a product in Yinglima soft-deletes it in Inhyma (`deleted_at` timestamp recorded).

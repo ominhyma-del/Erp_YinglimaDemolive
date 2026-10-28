@@ -550,7 +550,7 @@ export function MasterPage<T extends MasterRecord>({
   renderFields,
   extraFilters,
   toolbarExtras,
-  hideFilterSearchButton = false,
+  hideFilterSearchButton: _hideFilterSearchButton = false,
   onResetFilters,
   useFullPageForm,
   modalCardStyle,
@@ -2608,39 +2608,41 @@ export function MasterPage<T extends MasterRecord>({
         <ImportSummaryPanel summary={importSummary} error={importError} />
         {bannerExtras}
 
-        {/* Expandable Filter Box matching Original INHYMA ERP Design (Above the main card) */}
+        {/* Expandable Filter Box (Above the main card) */}
         {Boolean(toolbarExtras) && filterOpen && (
           <div
             className="card"
             style={{
-              padding: "12px 16px",
-              marginBottom: "10px",
+              padding: "16px 20px",
+              marginBottom: "16px",
               background: "#ffffff",
-              borderRadius: "8px",
+              borderRadius: "10px",
               border: "1px solid #e2e8f0",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "14px",
-              flexWrap: "wrap",
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
             }}
           >
-            <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", flex: 1 }}>
-              {toolbarExtras}
-            </div>
-            <div style={{ display: "flex", gap: "10px", alignItems: "flex-end" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+              <div style={{ fontWeight: 600, fontSize: "14px", color: "#0f172a", display: "flex", alignItems: "center", gap: "6px" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                </svg>
+                Filter Options
+              </div>
               <button
                 type="button"
+                className="btn btn-small"
                 style={{
-                  padding: "6px 16px",
+                  background: "#f1f5f9",
+                  color: "#475569",
+                  border: "1px solid #cbd5e1",
                   borderRadius: "6px",
-                  border: "none",
-                  background: "#64748b",
-                  color: "#ffffff",
-                  fontWeight: 600,
-                  fontSize: "13px",
                   cursor: "pointer",
+                  fontWeight: 600,
+                  padding: "5px 14px",
+                  fontSize: "12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
                 }}
                 onClick={() => {
                   setSearchInput("");
@@ -2649,29 +2651,11 @@ export function MasterPage<T extends MasterRecord>({
                   reload();
                 }}
               >
-                Reset
+                Reset Filters
               </button>
-              {!hideFilterSearchButton && (
-                <button
-                  type="button"
-                  style={{
-                    padding: "6px 16px",
-                    borderRadius: "6px",
-                    border: "none",
-                    background: "#f59e0b",
-                    color: "#ffffff",
-                    fontWeight: 600,
-                    fontSize: "13px",
-                    cursor: "pointer",
-                  }}
-                  onClick={() => {
-                    setCurrentPage(1);
-                    reload();
-                  }}
-                >
-                  Search
-                </button>
-              )}
+            </div>
+            <div>
+              {toolbarExtras}
             </div>
           </div>
         )}
