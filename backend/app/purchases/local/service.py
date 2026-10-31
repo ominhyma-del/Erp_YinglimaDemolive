@@ -234,7 +234,7 @@ class LocalPurchaseService:
             items_total_landing=calc_result["items_total_landing"],
             total_quantity=calc_result["total_quantity"],
             remarks=payload.remarks,
-            status=payload.status or "Confirmed",
+            status=payload.status or "Pending",
             created_by_id=created_by_id,
             created_by_name=created_by_name,
         )
@@ -320,6 +320,8 @@ class LocalPurchaseService:
         if payload.remarks is not None:
             purchase.remarks = payload.remarks
         if payload.status is not None:
+            if (purchase.status == "Inwarded" or purchase.stock_movement_id is not None) and payload.status != "Inwarded":
+                raise BadRequestException("Cannot change status of an already inwarded local purchase.")
             purchase.status = payload.status
 
         packing = payload.packing_forwarding if payload.packing_forwarding is not None else purchase.packing_forwarding

@@ -3,7 +3,67 @@
 **System:** Yinglima_ERP (China Procurement)  
 **Scope:** Functional updates, schema changes, UI hardening, and bug fixes.
 
-## [Release 2026-10-28] — Sale Process Local Purchase Costing Resolution & Product Prices Quote Modal 100% Zoom Fix
+## [Release 2026-10-30] — Sale Process Status Workflow Simplification & Logistics Dates (ETD/ETA)
+
+### 1. Status Workflow Streamlining (SaleProcessList.tsx, SaleProcessForm.tsx, models.py, schemas.py, repository.py, service.py)
+- **Status Renaming:** Renamed `sales_confirmed` to `confirmed` across UI badges, tabs, and schemas (legacy value still accepted).
+- **Removed Admin Approved Stage:** Removed the `ADMIN APPROVED` tab, metric card, and status option.
+- **Removed Status Selector From Inside Order Form:** New orders always start as `Pending`; the status dropdown was removed from `SaleProcessForm.tsx`.
+- **Status Control via 3-Dot Action Menu:** Added `✅ Confirm Order` (`Pending` -> `Confirmed`) and `↩️ Revert to Pending` in the row action menu on `/sale/process`.
+
+### 2. New Logistics Date Fields (ETD Origin Date & ETA Port Date)
+- **Schema & Model:** Added `etd_origin_date` and `eta_port_date` (`Date | null`) to the `SaleOrder` model, Pydantic schemas, and frontend types.
+- **UI Form:** Added `ETD Origin Date` and `ETA Port Date` inputs in the Logistics & Shipping Details card of `SaleProcessForm.tsx`.
+- **Listing Display:** `SaleProcessList.tsx` shows ETD and ETA under the `Logistics Info` column.
+
+### 3. Database Migration (`alembic/versions/e6f7a8b9c0d1_sales_etd_eta_and_confirmed_status.py`)
+- Adds `etd_origin_date` and `eta_port_date` columns to `sales_orders` (fixes the empty Sale Process list caused by the missing columns).
+- Migrates existing `sales_confirmed` and `admin_approved` orders to `confirmed` so they stay visible under the CONFIRMED tab.
+
+### 4. Status Actions: Dispatch, LR Received & Cancel (SaleProcessList.tsx, service.py, schemas.py, routes.py)
+- **Dispatch only from Confirmed:** `📤 Dispatch (Outward Stock)` (renamed from `Outward / Dispatch Stock`) now appears only for Confirmed orders. Backend `dispatch_order` rejects Pending orders.
+- **Mark LR Received:** New `🚚 Mark LR Received` option in the 3-dot menu for Dispatched orders. Popup with optional `LR No` and remarks; sets status to `lr` and saves `lr_no`.
+- **Cancel Order:** New `❌ Cancel Order` option for Pending and Confirmed orders. Popup with optional reason, saved in remarks as `[date] Cancelled: reason`. No stock change. Cancelled is final (cannot be reopened, edited, or dispatched). Dispatched / LR orders cannot be cancelled.
+- **Status transition rules (backend):** pending -> confirmed / cancelled; confirmed -> pending / cancelled / dispatched (via dispatch only); dispatched -> lr. Any other change returns a clear error.
+- **Edit / Delete guard:** `Edit Order` hidden for Dispatched, LR, and Cancelled orders (backend also blocks edits). `Delete` hidden for Dispatched and LR orders. The edit form can no longer change status.
+
+### 5. Item Table Toolbar Clean-up (SaleProcessForm.tsx)
+- Removed 4 controls above the Planned Line Items table: `📊 Costing & Supplier Columns (Active)` toggle, `Rate ¥` input, `Apply Rate` button, and `⚙️ + Add Spare from Master` button.
+- Costing & supplier columns are now always shown (`costingViewMode` fixed to `true`). The `🔍 Search & add product from master...` box remains for adding items (spare parts are still auto-detected from their category).
+
+### 6. Per-Order Spare-to-Product Conversion Button (SaleProcessForm.tsx, schemas.py, service.py)
+- Added `⇄ Make Product` button (and `↩ Make Spare` revert button) on spare line item rows in `SaleProcessForm.tsx`.
+- Clicking `⇄ Make Product` flips `is_spare` to `false` on that Sale Process line item only, rendering it as a standalone product on the order and CI/PL documents while keeping the Product Master record unchanged as a Spare.
+- Updated `SaleService.create_order`, `SaleService.update_order`, and `SaleService.get_trade_document_details` to respect the explicit per-order `SaleOrderItem.is_spare` flag instead of overriding it back to `True` from the Product Master category.
+
+### 7. Local Purchase Status Workflow via 3-Dot Menu, VAT % Toggle, Dual Item Totals & Product Purchase History Link (LocalPurchaseForm.tsx, LocalPurchases.tsx, models.py, schemas.py, service.py)
+- **Status Control Moved to List 3-Dot (`⋮`) Menu:** Removed the `Status` field and inline `Warehouse Inward Stock Receipt` card from inside `LocalPurchaseForm.tsx`. New Local Purchases default to `Pending`, and statuses (`Pending`, `Confirmed`, `Inwarded`) are updated from the 3-dot (`⋮`) action menu on `/purchase/local` (`✅ Mark as Confirmed`, `⏳ Mark as Pending`, `📦 Mark as Inward (Stock In)`).
+- **VAT % Show/Hide Toggle & Dual Item Total Columns:** Added a `🙈 Hide VAT % Column` / `👁️ Show VAT % Column` toggle in the `PRODUCT ITEM` header bar of `LocalPurchaseForm.tsx`, and split `Item Total` into **Item Total (Without VAT)** and **Item Total (With VAT)** across rows and `<tfoot>` totals.
+- **Product Purchase History Hyperlink:** Made each product name in `LocalPurchaseForm.tsx` a clickable hyperlink (`+ 📜 History` badge) opening `ProductTradeHistoryDrawer` to inspect historical purchase count, suppliers, dates, and unit/landed rates.
+
+---
+
+## [Release 2026-10-29] — 0ms Instant Product Line-Item Rendering, Stock Movement / Users Filter UI, Standardized Imp/Exp SVG Badges & Cross-ERP Isolation
+
+### 0A. Standardized Imp / Exp (SAMPLE FILE, IMPORT, EXPORT) SVG Icon Badges (ImportWizard.tsx, style.css, ProductPrices.tsx, LocalPurchases.tsx)
+- Replaced legacy emojis inside all Imp / Exp and Export dropdown menus across Yinglima_ERP with clean SVG icon badges matching Inhyma_ERP.
+
+### 0. Stock Movement & Users Page Header + Filter Options Standardization (StockMovements.tsx & Users.tsx)
+- Added standardized page-header title, top-right Funnel Filter toggle button with active count badge, and collapsible Filter Options card.
+
+### 1. Zero Hardcoded Localhost/Port Links & Cross-ERP Isolation (ssoBridge.ts, ecosystemSession.ts, EcosystemSwitcher.tsx, ite.config.ts, config.py, inquiries/routes.py)
+- Peer frontend and API addresses are loaded strictly from .env / .env.defaults locally and from Render environment variables when deployed.
+- Strict Local vs Hosted Origin Guard prevents localhost tabs from jumping to hosted domains.
+
+### 2. 0ms Instant Product Line-Item Rendering in Sale Process & Local Purchase
+- Sale Process and Local Purchase summary endpoints include line items upfront, rendering table items in 0ms without waiting for background queries.
+
+---
+
+## [Release 2026-10-28] — Sale Process Local Purchase Costing Resolution, Product Prices Quote Modal 100% Zoom Fix & Product Gallery Filter Toggle
+
+### 0A. Product Gallery Top-Right Funnel Filter Toggle Button (ProductGallery.tsx)
+- Added the standardized top-right funnel filter toggle button on Product Gallery matching Product Master, Product Prices, Suppliers, and Buyers.
 
 ### 0. Product Prices "+ Add New Supplier Quotation" Modal 100% Zoom Footer Visibility Fix (`ProductPrices.tsx` & `style.css`)
 - **Root Cause:** `.modal-card form > :not(.form-actions):not(.modal-footer)` in `style.css` applied `padding: 20px 24px` to every direct child `<div>` inside `<form>`, adding 160px of vertical height and pushing the `Cancel` and `+ Add Supplier Quote` footer buttons outside the `max-height: 90vh` `.modal-dialog-card` box at 100% zoom.

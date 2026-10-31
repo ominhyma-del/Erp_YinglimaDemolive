@@ -685,7 +685,7 @@ class SaleService:
             total_amount += item_tot
             total_qty += qty
 
-            is_item_spare = bool(getattr(it, "is_spare", False) or (it.product_id in spare_prod_ids))
+            is_item_spare = bool(it.is_spare) if getattr(it, "is_spare", None) is not None else (it.product_id in spare_prod_ids)
 
             item_entities.append(
                 SaleOrderItem(
@@ -740,6 +740,8 @@ class SaleService:
             transporter_name=payload.transporter_name,
             port_of_loading=payload.port_of_loading,
             port_of_discharge=payload.port_of_discharge,
+            etd_origin_date=payload.etd_origin_date,
+            eta_port_date=payload.eta_port_date,
             ocean_freight_usd=float(payload.ocean_freight_usd or 0.0),
             local_charges_coc_usd=float(payload.local_charges_coc_usd or 0.0),
             usd_exchange_rate=float(payload.usd_exchange_rate or 6.70),
@@ -778,6 +780,13 @@ class SaleService:
         if not order:
             raise NotFoundException(f"Sale order {order_id} not found.")
 
+        if (order.status or "").strip().lower() in ("dispatched", "lr", "cancelled"):
+            raise BadRequestException(
+                f"Sale order {order.order_no} is {order.status.upper()} and can no longer be edited."
+            )
+        # Status is changed only through the status / dispatch actions, never through the edit form.
+        payload.status = None
+
         if payload.buyer_id is not None:
             order.buyer_id = payload.buyer_id
         if payload.buyer_name is not None:
@@ -812,6 +821,10 @@ class SaleService:
             order.port_of_loading = payload.port_of_loading
         if payload.port_of_discharge is not None:
             order.port_of_discharge = payload.port_of_discharge
+        if payload.etd_origin_date is not None:
+            order.etd_origin_date = payload.etd_origin_date
+        if payload.eta_port_date is not None:
+            order.eta_port_date = payload.eta_port_date
         if payload.remarks is not None:
             order.remarks = payload.remarks
 
@@ -859,7 +872,7 @@ class SaleService:
                 total_amount += item_tot
                 total_qty += qty
 
-                is_item_spare = bool(getattr(it, "is_spare", False) or (it.product_id in spare_prod_ids))
+                is_item_spare = bool(it.is_spare) if getattr(it, "is_spare", None) is not None else (it.product_id in spare_prod_ids)
 
                 order.items.append(
                     SaleOrderItem(
@@ -902,14 +915,52 @@ class SaleService:
         order_id: uuid.UUID,
         status: str,
         remarks: str | None = None,
+        lr_no: str | None = None,
     ) -> SaleOrder:
         order = await self.repo.get_by_id(order_id)
         if not order:
             raise NotFoundException(f"Sale order {order_id} not found.")
 
-        order.status = status.strip().lower()
-        if remarks:
-            order.remarks = f"{order.remarks or ''}\n[{date.today()}] Status updated to {status}: {remarks}".strip()
+        st_val = status.strip().lower()
+        if st_val == "sales_confirmed":
+            st_val = "confirmed"
+        current = (order.status or "pending").strip().lower()
+        if current == "sales_confirmed":
+            current = "confirmed"
+
+        # Allowed status transitions (Dispatched is set only via dispatch_order,
+        # which also creates the outward stock movement).
+        allowed: dict[str, set[str]] = {
+            "pending": {"confirmed", "cancelled"},
+            "confirmed": {"pending", "cancelled"},
+            "dispatched": {"lr"},
+            "lr": set(),
+            "cancelled": set(),
+        }
+        if st_val == "dispatched":
+            raise BadRequestException("Use 'Dispatch (Outward Stock)' to dispatch an order.")
+        if st_val not in allowed.get(current, set()):
+            if st_val == "cancelled" and current in ("dispatched", "lr"):
+                raise BadRequestException(
+                    f"Sale order {order.order_no} is already {current.upper()} and cannot be cancelled "
+                    "because its stock has already left the warehouse."
+                )
+            raise BadRequestException(
+                f"Cannot change status of {order.order_no} from {current.upper()} to {st_val.upper()}."
+            )
+
+        order.status = st_val
+        if st_val == "lr" and lr_no and lr_no.strip():
+            order.lr_no = lr_no.strip()
+
+        label = {"cancelled": "Cancelled", "lr": "LR Received", "confirmed": "Confirmed", "pending": "Reverted to Pending"}.get(st_val, st_val)
+        note = f"[{date.today()}] {label}"
+        if st_val == "lr" and lr_no and lr_no.strip():
+            note += f" (LR No: {lr_no.strip()})"
+        if remarks and remarks.strip():
+            note += f": {remarks.strip()}"
+        if remarks or st_val in ("cancelled", "lr"):
+            order.remarks = f"{order.remarks or ''}\n{note}".strip()
 
         return await self.repo.update(order)
 
@@ -932,6 +983,12 @@ class SaleService:
         if order.stock_movement_id or order.status == "dispatched":
             raise BadRequestException(
                 f"Sale order {order.order_no} has already been dispatched under slip {order.stock_movement_number or 'OUT'}."
+            )
+
+        if (order.status or "").strip().lower() not in ("confirmed", "sales_confirmed", "admin_approved"):
+            raise BadRequestException(
+                f"Sale order {order.order_no} must be CONFIRMED before it can be dispatched "
+                f"(current status: {(order.status or 'pending').upper()})."
             )
 
         if not order.items:
@@ -1166,10 +1223,12 @@ class SaleService:
 
             # Check if this item is a spare part
             is_spare_item = bool(getattr(item, "is_spare", False))
-            if not is_spare_item and product and product.category_id:
-                cat = categories_by_id.get(product.category_id)
-                if cat and "spare" in (cat.name or "").lower():
-                    is_spare_item = True
+            # Per-order item.is_spare is authoritative; categories_by_id kept for reference
+            _ = categories_by_id
+
+
+
+
 
             item_dict = {
                 "product_id": str(item.product_id) if item.product_id else None,
