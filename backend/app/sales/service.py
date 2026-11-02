@@ -962,7 +962,10 @@ class SaleService:
         if remarks or st_val in ("cancelled", "lr"):
             order.remarks = f"{order.remarks or ''}\n{note}".strip()
 
-        return await self.repo.update(order)
+        updated_order = await self.repo.update(order)
+        if st_val == "lr":
+            await self._delete_planning_consignment_column_if_present(updated_order)
+        return updated_order
 
     async def dispatch_order(
         self,
@@ -1054,9 +1057,118 @@ class SaleService:
         order.status = "dispatched"
         order.stock_movement_id = movement.id
         order.stock_movement_number = movement.movement_no
+        await self._delete_planning_consignment_column_if_present(order)
         await self.session.commit()
         await self.session.refresh(order)
         return order
+
+    async def _delete_planning_consignment_column_if_present(self, order: SaleOrder) -> None:
+        """
+        When a Sale Order becomes 'dispatched' or 'lr', automatically soft-delete its linked
+        consignment column group (<Label> N, <Label>N Remarks, NO. OF PKG <LABEL>N,
+        TOTAL WEIGHT <LABEL>N, TOTAL CBM <LABEL>N) from Shipment Planning so completed/dispatched
+        consignments are removed from the active planning grid.
+        Note: Cancelled, Pending, and Confirmed orders keep their column in Shipment Planning.
+        """
+        try:
+            import re as _re
+            from datetime import datetime, timezone
+            from app.planning.service import _mum_derived_kind_and_group, mum_num_from_column_name
+            from app.planning.ws_manager import connection_manager
+
+            col: PlanningColumn | None = None
+            if order.planning_column_id:
+                col = await self.session.get(PlanningColumn, order.planning_column_id)
+                if col and col.deleted_at is not None:
+                    col = None
+
+            sheet_id = col.sheet_id if col else order.planning_sheet_id
+            if not sheet_id:
+                return
+
+            sheet = await self.session.get(PlanningSheet, sheet_id)
+            if not sheet or sheet.deleted_at is not None:
+                return
+
+            mum_label = sheet.mum_group_label or "Mum"
+
+            q_cols = await self.session.execute(
+                select(PlanningColumn)
+                .where(
+                    PlanningColumn.sheet_id == sheet_id,
+                    PlanningColumn.deleted_at.is_(None),
+                )
+                .order_by(PlanningColumn.position.asc())
+            )
+            active_cols = list(q_cols.scalars().all())
+            if not active_cols:
+                return
+
+            if col is None and order.consignment_code:
+                code_lower = order.consignment_code.strip().lower()
+                col = next((c for c in active_cols if c.name.strip().lower() == code_lower), None)
+
+            group_num: int | None = None
+            for candidate_name in (col.name if col else None, order.consignment_code):
+                if not candidate_name:
+                    continue
+                for lbl in (mum_label, "Mum"):
+                    group_num = mum_num_from_column_name(candidate_name, label=lbl)
+                    if group_num is not None:
+                        break
+                if group_num is not None:
+                    break
+
+            cols_to_delete: list[PlanningColumn] = []
+            for c in active_cols:
+                should_del = col is not None and c.id == col.id
+                if not should_del and group_num is not None:
+                    for lbl in (mum_label, "Mum"):
+                        if mum_num_from_column_name(c.name, label=lbl) == group_num:
+                            should_del = True
+                            break
+                        derived = _mum_derived_kind_and_group(c.name, label=lbl)
+                        if derived is not None and derived[1] == group_num:
+                            should_del = True
+                            break
+                        if _re.match(
+                            rf"^{_re.escape(lbl)}[\s\-]*0*{group_num}\s*remarks?$",
+                            c.name.strip(),
+                            _re.IGNORECASE,
+                        ):
+                            should_del = True
+                            break
+                if should_del:
+                    cols_to_delete.append(c)
+
+            if not cols_to_delete:
+                return
+
+            now = datetime.now(timezone.utc)
+            deleted_ids = {c.id for c in cols_to_delete}
+            for c in cols_to_delete:
+                c.deleted_at = now
+
+            remaining = [c for c in active_cols if c.id not in deleted_ids]
+            for idx, c in enumerate(remaining):
+                if c.position != idx:
+                    c.position = idx
+
+            await self.session.flush()
+
+            for c in cols_to_delete:
+                try:
+                    await connection_manager.broadcast(
+                        sheet_id,
+                        {
+                            "type": "column_deleted",
+                            "payload": {"sheet_id": str(sheet_id), "column_id": str(c.id)},
+                        },
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def export_excel(self, records: list[SaleOrder]) -> io.BytesIO:
         """Export Sale Process orders to styled Excel workbook."""

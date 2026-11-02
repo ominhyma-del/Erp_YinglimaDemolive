@@ -49,6 +49,7 @@ const pageLoaders = {
   Brands: () => import("@/pages/masters/Brands").then((m) => ({ default: m.BrandsPage })),
   SupplierTypes: () => import("@/pages/masters/SupplierTypes").then((m) => ({ default: m.SupplierTypesPage })),
   BuyerTypes: () => import("@/pages/masters/BuyerTypes").then((m) => ({ default: m.BuyerTypesPage })),
+  Warehouses: () => import("@/pages/masters/Warehouses").then((m) => ({ default: m.WarehousesPage })),
   Categories: () => import("@/pages/masters/Categories").then((m) => ({ default: m.CategoriesPage })),
   SubCategories: () => import("@/pages/masters/SubCategories").then((m) => ({ default: m.SubCategoriesPage })),
   Products: () => import("@/pages/masters/Products").then((m) => ({ default: m.ProductsPage })),
@@ -86,6 +87,7 @@ const HsnPage = lazy(pageLoaders.Hsn);
 const BrandsPage = lazy(pageLoaders.Brands);
 const SupplierTypesPage = lazy(pageLoaders.SupplierTypes);
 const BuyerTypesPage = lazy(pageLoaders.BuyerTypes);
+const WarehousesPage = lazy(pageLoaders.Warehouses);
 const CategoriesPage = lazy(pageLoaders.Categories);
 const SubCategoriesPage = lazy(pageLoaders.SubCategories);
 const ProductsPage = lazy(pageLoaders.Products);
@@ -232,6 +234,7 @@ export function App() {
             <Route path="/masters/brands" element={<BrandsPage />} />
             <Route path="/masters/supplier-types" element={<SupplierTypesPage />} />
             <Route path="/masters/buyer-types" element={<BuyerTypesPage />} />
+            <Route path="/masters/warehouses" element={<WarehousesPage />} />
             <Route path="/masters/categories" element={<CategoriesPage />} />
             <Route path="/masters/subcategories" element={<SubCategoriesPage />} />
             <Route path="/masters/products" element={<ProductsPage />} />

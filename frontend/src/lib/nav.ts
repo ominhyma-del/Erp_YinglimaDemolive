@@ -102,6 +102,7 @@ export const NAV_SECTIONS: NavSection[] = [
           { key: "masters-supplier-types", label: "Supplier Types", path: "/masters/supplier-types", permission: "suppliertype.view" },
           { key: "masters-buyer-types", label: "Buyer Types", path: "/masters/buyer-types", permission: "buyertype.view" },
           { key: "masters-company-list", label: "Organization List", path: "/masters/company-list", permission: "organizationlist.view" },
+          { key: "masters-warehouses", label: "Warehouses", path: "/masters/warehouses", permission: "product.view" },
         ],
       },
       { key: "notification-settings", label: "Notification Rules", path: "/notification-settings", icon: "bell", permission: "notification_settings.view" },
@@ -142,6 +143,7 @@ export const PAGE_TITLES: Record<string, string> = {
   "masters-brands": "Brands",
   "masters-supplier-types": "Supplier Types",
   "masters-buyer-types": "Buyer Types",
+  "masters-warehouses": "Warehouses",
 
   "masters-categories": "Categories",
   "masters-subcategories": "Sub Categories",
