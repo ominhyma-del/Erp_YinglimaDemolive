@@ -128,6 +128,10 @@ api_router.include_router(sales_router)
 from app.stock.routes import router as stock_router
 api_router.include_router(stock_router)
 
+# Finance: Financial Report & Payment Planner (Local Purchase + Sales Process + Agent Freight)
+from app.finance.routes import router as finance_router
+api_router.include_router(finance_router)
+
 
 # Notifications & Alert Rules
 from app.notifications.routes import router as notifications_router

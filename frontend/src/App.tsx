@@ -60,6 +60,8 @@ const pageLoaders = {
   LocalPurchaseForm: () => import("@/pages/purchases/LocalPurchaseForm").then((m) => ({ default: m.LocalPurchaseFormPage })),
   SaleProcessList: () => import("@/pages/sales/SaleProcessList").then((m) => ({ default: m.SaleProcessListPage })),
   SaleProcessForm: () => import("@/pages/sales/SaleProcessForm").then((m) => ({ default: m.SaleProcessFormPage })),
+  FinancialReport: () => import("@/pages/finance/FinancialReport").then((m) => ({ default: m.FinancialReportPage })),
+  ConsignmentOverview: () => import("@/pages/finance/ConsignmentOverview").then((m) => ({ default: m.ConsignmentOverviewPage })),
   Trash: () => import("@/pages/Trash").then((m) => ({ default: m.TrashPage })),
   PublicSupplierQuote: () => import("@/pages/PublicSupplierQuotePage"),
   NotificationSettings: () => import("@/pages/NotificationSettings").then((m) => ({ default: m.NotificationSettings })),
@@ -98,6 +100,8 @@ const LocalPurchasesPage = lazy(pageLoaders.LocalPurchases);
 const LocalPurchaseFormPage = lazy(pageLoaders.LocalPurchaseForm);
 const SaleProcessListPage = lazy(pageLoaders.SaleProcessList);
 const SaleProcessFormPage = lazy(pageLoaders.SaleProcessForm);
+const FinancialReportPage = lazy(pageLoaders.FinancialReport);
+const ConsignmentOverviewPage = lazy(pageLoaders.ConsignmentOverview);
 const TrashPage = lazy(pageLoaders.Trash);
 const PublicSupplierQuotePage = lazy(pageLoaders.PublicSupplierQuote);
 
@@ -223,6 +227,14 @@ export function App() {
             <Route path="/sales/orders/:id" element={<Navigate to="/sale/process" replace />} />
             <Route path="/sales/orders" element={<Navigate to="/sale/process" replace />} />
             <Route path="/sales" element={<Navigate to="/sale/process" replace />} />
+
+            {/* Finance */}
+            <Route path="/finance/report" element={<FinancialReportPage />} />
+            <Route path="/finance/consignment-overview" element={<ConsignmentOverviewPage />} />
+            <Route path="/consignment-overview" element={<Navigate to="/finance/consignment-overview" replace />} />
+            <Route path="/finance" element={<Navigate to="/finance/report" replace />} />
+            <Route path="/finance-planning-report" element={<Navigate to="/finance/report" replace />} />
+            <Route path="/finance-planning-report/list" element={<Navigate to="/finance/report" replace />} />
 
             <Route path="/masters/company-list" element={<CompanyListPage />} />
             <Route path="/masters/countries" element={<CountriesPage />} />

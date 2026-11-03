@@ -4786,3 +4786,42 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
 
 ---
 *End of Master Features & Testing Specification Manual. Maintained for Yinglima Enterprise ERP. Last updated: October 2026 (Sections 42-43: Multi-ERP Ecosystem SSO Bridge, Canonical ERP Keys, Dynamic Registry Routing, Central Session Resilience, Master Runner Process Supervision, and Scoped Reload).*
+
+
+---
+
+## Financial Report & Payment Planner (`/finance/report`) — Test Cases
+1. **Confirm-Only Entry Rule**:
+   - Create a Local Purchase or Sale Process order in `Pending` status -> verify it does **not** appear in `/finance/report`.
+   - Change its status to `Confirmed` -> verify it automatically appears in `/finance/report` under the **Pending** tab of its section (`Local Purchase` or `Sales Process`).
+2. **Recording Partial & Full Payments (`⋮ -> Add Payment`)**:
+   - Click `⋮ -> Add Payment` on a `Pending` row, click `30% of Total`, enter a payment date & mode (`RMB A/C` or `USD Transaction A/C`), and save -> verify `Paid Amount` (green) increases, `Balance Amount` (red) decreases, and the entry remains in `Pending`.
+   - Click `⋮ -> Add Payment` again, click `100% Full Balance`, and save -> verify `Balance Amount` becomes `0.00` and the entry automatically moves from the **Pending** tab to the **Cleared** tab.
+3. **Payment History & Deletion (`⋮ -> Payment History`)**:
+   - Open `Payment History`, delete a recorded payment installment -> verify the balance is recalculated and the entry returns to `Pending` if balance > 0.
+4. **Editing Schedule, BL & Forwarder/Agent Freight Bill (`⋮ -> Edit BL & Agent Bill`)**:
+   - Update `Payment Terms`, `Due Date`, `BL Details`, `BL Status` (`Telex`), `Agent Name` (`Agnes`), `Local Charge (RMB)`, `Freight Charge (RMB)`, and `Bill Status` (`Paid` / `Pending`) -> verify the row and KPI summary update immediately.
+5. **Multi-Sheet Excel Planner Export (`Export`)**:
+   - Click `Export` in the top-right header -> verify a 4-sheet `.xlsx` workbook (`Financial Summary`, `Local Purchase (Suppliers)`, `Sales & Agent Schedule`, `Payment Transactions`) downloads cleanly.
+
+
+### Test Case LP-BILL-01: Local Purchase Bill PDF Upload & Edit Persistence in Supabase Storage
+1. Navigate to **PURCHASE -> Local Purchase** (`/purchase/local`) and click **Edit** on an existing Local Purchase (e.g., `INH-20261`) that does not yet have a bill attached.
+2. In **Procurement & Invoice Essentials -> Bill Document File**, click **Choose File** and select an invoice PDF.
+3. Verify that:
+   - The file immediately uploads to Supabase Storage (`purchase-bills` bucket) and displays a toast `"Invoice PDF uploaded to Supabase Storage!"`.
+   - A green **`📄 View / Download Bill`** button and **`✓ Attached in Supabase Storage: <filename>.pdf`** indicator appear next to the file input.
+4. Click **Save Changes** to return to the Local Purchase list, then click **Edit** on the same Local Purchase again.
+5. Verify that **`📄 View / Download Bill`** and the attached PDF filename remain visible and clicking **`📄 View / Download Bill`** opens the PDF from Supabase Storage (`https://.../storage/v1/object/public/purchase-bills/...`).
+
+
+### Test Case CONS-OVW-01: Unified Consignment Overview Module (`/finance/consignment-overview`)
+1. Navigate to **FINANCE -> Consignment Overview** (`/finance/consignment-overview`) in the left sidebar.
+2. Verify the **Consignment Overview List View** displays all confirmed consignments (e.g., `Mum 51`, `Mum 48`, `GJ15`, `Mum 1`) with branch tabs (`All`, `Inhyma Mumbai (INM)`, etc.), stage filter buttons (`All`, `Pending`, `Cleared`), `Gallery Docs` counter (`📄 X / 16 Docs`), `Cargo Checklist` counter (`✓ X / 12 Yes`), and `Finance Status` badge.
+3. Click any consignment code (e.g., **`Mum 51`**) or click **`Open Overview`**.
+4. Verify the **Consignment Overview Detail View** displays all 4 unified sections on one page:
+   - **Finance Planning**: Shows linked `Supplier`, `Customer`, and `Cargo Forwarder` rows with amounts, payment terms, `⬇ View Bill` links, and `Pending` / `Cleared` badges.
+   - **Consignment Gallery (Editable)**: Shows all 16 China/Global export document cards. Click **`Choose File`** on any slot (e.g., `Proforma Invoice (PI)` or `Final Bill of Lading (BL)`) -> verify the file uploads to Supabase Storage, displays the `☁⬇` view/download button and `🗑` delete button, and increments the uploaded counter.
+   - **Cargo Status — Shipment Checklist Details (Editable)**: Click any of the 12 checklist cards (e.g., `Draft Approved BL Received`, `Listed with Forwarder / Booking Confirmed`) -> verify the badge flips from red **`No`** to green **`Yes`** in **0ms** and persists across page reloads. Enter a `Cargo Remark` or `ETD Origin` / `ETA Destination Port` date -> verify it saves cleanly.
+   - **Product Summary**: Verify all product line items, quantities, suppliers/source documents, and consignment/batch codes are listed at the bottom.
+

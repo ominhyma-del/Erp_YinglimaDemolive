@@ -75,6 +75,13 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    label: "FINANCE",
+    items: [
+      { key: "finance-report", label: "Financial Report", path: "/finance/report", icon: "coins" },
+      { key: "consignment-overview", label: "Consignment Overview", path: "/finance/consignment-overview", icon: "fileText" },
+    ],
+  },
+  {
     label: "USER MANAGEMENT",
     items: [
       { key: "users", label: "Users", path: "/users", icon: "user", permission: "user.view" },
@@ -151,6 +158,10 @@ export const PAGE_TITLES: Record<string, string> = {
   "product-prices": "Product Prices",
   "local-purchases": "Local Purchase",
   "sale-process": "Sale Process",
+  "finance-report": "Finance Planning Report",
+  "/finance/report": "Finance Planning Report",
+  "consignment-overview": "Consignment Overview",
+  "/finance/consignment-overview": "Consignment Overview",
   "/sale/process": "Sale Process",
   "/sale/process/new": "New Sale Process Order",
   suppliers: "Suppliers",

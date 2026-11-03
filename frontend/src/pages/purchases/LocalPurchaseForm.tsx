@@ -118,7 +118,45 @@ export function LocalPurchaseFormPage() {
   // Bill file attachment
   const [billFile, setBillFile] = useState<File | null>(null);
   const [billFileUrl, setBillFileUrl] = useState<string | null>(null);
+  const [billUploading, setBillUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleBillFileSelect = async (selectedFile: File) => {
+    setBillFile(selectedFile);
+    setBillUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const uploadRes = await apiPostMultipart<{ bill_file_url?: string; url?: string }>(
+        "/purchases/local/upload-bill",
+        formData
+      );
+      const uploadedUrl = uploadRes.data?.bill_file_url || uploadRes.data?.url;
+      if (uploadedUrl) {
+        setBillFileUrl(uploadedUrl);
+        setBillFile(null);
+        if (isEdit && id) {
+          try {
+            const patchRes = await apiPatch<LocalPurchaseDetail>(`/purchases/local/${id}`, {
+              bill_file_url: uploadedUrl,
+            } as any);
+            if (patchRes.data) {
+              updateLocalPurchaseInCache(patchRes.data);
+            }
+          } catch (patchErr) {
+            console.warn("Could not auto-persist bill_file_url on select:", patchErr);
+          }
+        }
+        toast("Invoice PDF uploaded to Supabase Storage!", "success");
+      } else {
+        toast("Upload completed, will attach on save.", "info");
+      }
+    } catch (err) {
+      toast(`Failed to upload bill to Supabase Storage: ${errorMessage(err)}`, "error");
+    } finally {
+      setBillUploading(false);
+    }
+  };
 
   // Product Search state
   const [productSearch, setProductSearch] = useState("");
@@ -1325,18 +1363,19 @@ export function LocalPurchaseFormPage() {
     try {
       let finalBillUrl = billFileUrl;
       if (billFile) {
-        try {
-          const formData = new FormData();
-          formData.append("file", billFile);
-          const uploadRes = await apiPostMultipart<{ bill_file_url?: string; url?: string }>("/purchases/local/upload-bill", formData);
-          const uploadedUrl = uploadRes.data?.bill_file_url || uploadRes.data?.url;
-          if (uploadedUrl) {
-            finalBillUrl = uploadedUrl;
-            setBillFileUrl(finalBillUrl);
-          }
-        } catch (uploadErr) {
-          console.warn("Bill file upload warning:", uploadErr);
+        const formData = new FormData();
+        formData.append("file", billFile);
+        const uploadRes = await apiPostMultipart<{ bill_file_url?: string; url?: string }>(
+          "/purchases/local/upload-bill",
+          formData
+        );
+        const uploadedUrl = uploadRes.data?.bill_file_url || uploadRes.data?.url;
+        if (!uploadedUrl) {
+          throw new Error("Failed to upload bill document to Supabase Storage.");
         }
+        finalBillUrl = uploadedUrl;
+        setBillFileUrl(finalBillUrl);
+        setBillFile(null);
       }
 
       const payload: LocalPurchasePayload = {
@@ -1978,24 +2017,25 @@ export function LocalPurchaseFormPage() {
                 <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "6px", display: "block" }}>
                   Bill Document File <span style={{ fontWeight: 400, color: "#64748b" }}>(PDF, Image, Excel - Optional)</span>
                 </label>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <div style={{ position: "relative", flex: 1 }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ position: "relative", flex: 1, minWidth: "180px" }}>
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg,.webp"
+                      disabled={billUploading}
                       onChange={(e) => {
                         if (e.target.files && e.target.files[0]) {
-                          setBillFile(e.target.files[0]);
+                          void handleBillFileSelect(e.target.files[0]);
                         }
                       }}
                       style={{
                         width: "100%",
                         padding: "6px 10px",
                         fontSize: "12px",
-                        border: "1.5px solid #94a3b8",
+                        border: billFileUrl ? "1.5px solid #10b981" : "1.5px solid #94a3b8",
                         borderRadius: "6px",
-                        background: "#f8fafc",
+                        background: billFileUrl ? "#f0fdf4" : "#f8fafc",
                         boxSizing: "border-box",
                       }}
                     />
@@ -2018,44 +2058,89 @@ export function LocalPurchaseFormPage() {
                           fontWeight: 700,
                           padding: "2px 4px",
                         }}
-                        title="Clear file"
+                        title="Clear selected file"
                       >
                         ✕
                       </button>
                     )}
                   </div>
 
-                  {billFileUrl && (
-                    <a
-                      href={billFileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      download
+                  {billUploading && (
+                    <span
                       style={{
-                        background: "#ecfdf5",
-                        color: "#059669",
-                        border: "1.5px solid #a7f3d0",
-                        padding: "7px 12px",
-                        borderRadius: "6px",
-                        fontWeight: 700,
                         fontSize: "12px",
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
+                        fontWeight: 600,
+                        color: "#0284c7",
+                        background: "#e0f2fe",
+                        padding: "6px 10px",
+                        borderRadius: "6px",
                         whiteSpace: "nowrap",
-                        textDecoration: "none",
-                        boxSizing: "border-box",
                       }}
-                      title="Download bill document stored in Supabase"
                     >
-                      📥 Bill
-                    </a>
+                      ⏳ Uploading to Supabase...
+                    </span>
+                  )}
+
+                  {billFileUrl && !billUploading && (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                      <a
+                        href={billFileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          background: "#ecfdf5",
+                          color: "#059669",
+                          border: "1.5px solid #6ee7b7",
+                          padding: "7px 12px",
+                          borderRadius: "6px",
+                          fontWeight: 700,
+                          fontSize: "12px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          whiteSpace: "nowrap",
+                          textDecoration: "none",
+                          boxSizing: "border-box",
+                        }}
+                        title="Open / Download Invoice PDF from Supabase Storage"
+                      >
+                        📄 View / Download Bill
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBillFileUrl(null);
+                          setBillFile(null);
+                          if (fileInputRef.current) fileInputRef.current.value = "";
+                        }}
+                        style={{
+                          background: "#fef2f2",
+                          color: "#dc2626",
+                          border: "1px solid #fecaca",
+                          borderRadius: "6px",
+                          padding: "6px 8px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                        title="Remove attached bill"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   )}
                 </div>
-                <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
-                  Optional bill attachment linked upon saving
-                </span>
+                {billFileUrl ? (
+                  <span style={{ fontSize: "11px", color: "#059669", fontWeight: 600, marginTop: "4px", display: "block" }}>
+                    ✓ Attached in Supabase Storage:{" "}
+                    {decodeURIComponent(billFileUrl.split("/").pop() || "invoice.pdf").replace(/^[a-f0-9]{12}_/i, "")}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: "11px", color: "#64748b", marginTop: "4px", display: "block" }}>
+                    Optional bill attachment stored in Supabase Storage
+                  </span>
+                )}
               </div>
             </div>
           </div>
