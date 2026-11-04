@@ -170,8 +170,59 @@ def upgrade() -> None:
             ["consignment_key"],
         )
 
+    if "vat_return_records" not in existing_tables:
+        op.create_table(
+            "vat_return_records",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+            sa.Column("source_type", sa.String(length=32), nullable=False, server_default=sa.text("'sale_order'")),
+            sa.Column("source_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("exp_no", sa.String(length=120), nullable=False),
+            sa.Column("invoice_date", sa.Date(), nullable=True),
+            sa.Column("financial_year", sa.String(length=32), nullable=True),
+            sa.Column("consignment_code", sa.String(length=120), nullable=True),
+            sa.Column("buyer_name", sa.String(length=200), nullable=True),
+            sa.Column("organization_name", sa.String(length=150), nullable=True),
+            sa.Column("first_filing_date", sa.Date(), nullable=True),
+            sa.Column("receiving_date_text", sa.String(length=150), nullable=True),
+            sa.Column("status_override", sa.String(length=40), nullable=True),
+            sa.Column("total_rmb_incl_vat_override", sa.Numeric(15, 2), nullable=True),
+            sa.Column("total_vat_return_override", sa.Numeric(15, 2), nullable=True),
+            sa.Column("remarks", sa.Text(), nullable=True),
+            sa.Column("items_override_json", sa.Text(), nullable=True, server_default=sa.text("'[]'")),
+            sa.Column("updated_by_id", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("updated_by_name", sa.String(length=150), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+            sa.UniqueConstraint("exp_no", name="uq_vat_return_records_exp_no"),
+        )
+        op.create_index("ix_vat_return_records_exp_no", "vat_return_records", ["exp_no"])
+        op.create_index("ix_vat_return_records_source", "vat_return_records", ["source_type", "source_id"])
+
+    if "vat_return_receipts" not in existing_tables:
+        op.create_table(
+            "vat_return_receipts",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, nullable=False),
+            sa.Column("vat_record_id", postgresql.UUID(as_uuid=True), nullable=False),
+            sa.Column("exp_no", sa.String(length=120), nullable=False),
+            sa.Column("receipt_date", sa.Date(), nullable=False),
+            sa.Column("amount_rmb", sa.Numeric(15, 2), nullable=False, server_default=sa.text("0.00")),
+            sa.Column("reference_no", sa.String(length=150), nullable=True),
+            sa.Column("remarks", sa.Text(), nullable=True),
+            sa.Column("created_by_id", postgresql.UUID(as_uuid=True), nullable=True),
+            sa.Column("created_by_name", sa.String(length=150), nullable=True),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+            sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True),
+        )
+        op.create_index("ix_vat_return_receipts_record", "vat_return_receipts", ["vat_record_id"])
+        op.create_index("ix_vat_return_receipts_exp_no", "vat_return_receipts", ["exp_no"])
+        op.create_index("ix_vat_return_receipts_date", "vat_return_receipts", ["receipt_date"])
+
 
 def downgrade() -> None:
+    op.drop_table("vat_return_receipts")
+    op.drop_table("vat_return_records")
     op.drop_table("consignment_overviews")
     op.drop_table("finance_payments")
     op.drop_table("finance_record_meta")

@@ -79,6 +79,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "finance-report", label: "Financial Report", path: "/finance/report", icon: "coins" },
       { key: "consignment-overview", label: "Consignment Overview", path: "/finance/consignment-overview", icon: "fileText" },
+      { key: "vat-return", label: "VAT Return", path: "/finance/vat-return", icon: "coins" },
     ],
   },
   {

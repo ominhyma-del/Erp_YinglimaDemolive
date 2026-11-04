@@ -21,6 +21,10 @@ from app.finance.schemas import (
     FinancePaymentCreate,
     SourceTypeLiteral,
     StageLiteral,
+    VatReturnManualCreatePayload,
+    VatReturnReceiptCreate,
+    VatReturnStageFilterLiteral,
+    VatReturnUpdatePayload,
 )
 from app.finance.service import FinanceService
 
@@ -300,4 +304,199 @@ async def delete_consignment_document(
         message="Consignment document removed.",
         request_id=getattr(request.state, "request_id", "-"),
     )
+
+
+# ==============================================================================
+# VAT Return (China Export Tax Rebate / 出口退税) Endpoints
+# ==============================================================================
+
+
+@router.get(
+    "/vat-returns",
+    summary="List all China Export VAT Return records (live Confirmed Sales Process orders + imported EXP rows)",
+)
+async def list_vat_returns(
+    request: Request,
+    stage: VatReturnStageFilterLiteral = Query(
+        default="all",
+        description="Filter by stage: all | pending | partial | received | no_vat",
+    ),
+    financial_year: str | None = Query(default=None, description="Financial year e.g. 2025-2026"),
+    search: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    res = await service.list_vat_returns(
+        stage=stage,
+        financial_year=financial_year,
+        search=search,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    return build_success_response(
+        data=res.model_dump(mode="json"),
+        message="VAT return records fetched successfully.",
+        request_id=getattr(request.state, "request_id", "-"),
+    )
+
+
+@router.post(
+    "/vat-returns/manual",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a manual / standalone EXP VAT Return entry",
+)
+async def create_manual_vat_return(
+    request: Request,
+    payload: VatReturnManualCreatePayload,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    res = await service.create_manual_vat_return(
+        payload=payload,
+        user_id=current_user.id,
+        user_name=getattr(current_user, "full_name", None) or getattr(current_user, "email", None),
+    )
+    return build_success_response(
+        data=res,
+        message="VAT Return entry created successfully.",
+        request_id=getattr(request.state, "request_id", "-"),
+    )
+
+
+@router.patch(
+    "/vat-returns/record",
+    summary="Update VAT Return metadata, filing date, status override, remarks, or product breakdown items",
+)
+async def update_vat_return_record(
+    request: Request,
+    payload: VatReturnUpdatePayload,
+    key: str = Query(..., description="Record key (e.g. 'SO:<uuid>' or 'VR:<uuid>' or EXP No.)"),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    res = await service.update_vat_return(
+        record_key=key,
+        payload=payload,
+        user_id=current_user.id,
+        user_name=getattr(current_user, "full_name", None) or getattr(current_user, "email", None),
+    )
+    return build_success_response(
+        data=res,
+        message="VAT Return record updated successfully.",
+        request_id=getattr(request.state, "request_id", "-"),
+    )
+
+
+@router.post(
+    "/vat-returns/receipts",
+    status_code=status.HTTP_201_CREATED,
+    summary="Record a full or partial VAT refund receipt from the China Tax Bureau",
+)
+async def add_vat_return_receipt(
+    request: Request,
+    payload: VatReturnReceiptCreate,
+    key: str = Query(..., description="Record key (e.g. 'SO:<uuid>' or 'VR:<uuid>')"),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    rec = await service.add_vat_receipt(
+        record_key=key,
+        payload=payload,
+        user_id=current_user.id,
+        user_name=getattr(current_user, "full_name", None) or getattr(current_user, "email", None),
+    )
+    return build_success_response(
+        data=rec.model_dump(mode="json"),
+        message="VAT refund receipt recorded successfully.",
+        request_id=getattr(request.state, "request_id", "-"),
+    )
+
+
+@router.delete(
+    "/vat-returns/receipts/{receipt_id}",
+    summary="Delete a recorded VAT refund receipt and recalculate balance",
+)
+async def delete_vat_return_receipt(
+    request: Request,
+    receipt_id: uuid.UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    res = await service.delete_vat_receipt(receipt_id=receipt_id)
+    return build_success_response(
+        data=res,
+        message="VAT refund receipt deleted and balance recalculated.",
+        request_id=getattr(request.state, "request_id", "-"),
+    )
+
+
+@router.get(
+    "/vat-returns/sample-csv",
+    summary="Download sample CSV template for importing VAT Return records",
+)
+async def download_vat_returns_sample_csv(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    csv_bytes = service.generate_vat_returns_sample_csv()
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="vat_return_sample.csv"'},
+    )
+
+
+@router.post(
+    "/vat-returns/import",
+    summary="Import VAT Return records from Excel (.xlsx) or CSV (.csv) file",
+)
+async def import_vat_returns_file(
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    file_bytes = await file.read()
+    res = await service.import_vat_returns_file(
+        file_bytes=file_bytes,
+        filename=file.filename or "import.xlsx",
+        user_id=current_user.id,
+        user_name=getattr(current_user, "full_name", None) or getattr(current_user, "email", None),
+    )
+    return build_success_response(
+        data=res,
+        message=f"Imported {res['total_processed']} VAT Return records ({res['created']} new, {res['updated']} updated).",
+        request_id=getattr(request.state, "request_id", "-"),
+    )
+
+
+@router.get(
+    "/vat-returns/export",
+    summary="Export 2-sheet VAT Return Summary & Product Breakdown Excel workbook",
+)
+async def export_vat_returns_excel(
+    stage: VatReturnStageFilterLiteral = Query(default="all"),
+    financial_year: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    date_from: date | None = Query(default=None),
+    date_to: date | None = Query(default=None),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FinanceService = Depends(get_service),
+):
+    excel_bytes = await service.export_vat_returns_excel(
+        stage=stage,
+        financial_year=financial_year,
+        search=search,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    filename = f"Yinglima_VAT_Return_Report_{date.today().isoformat()}.xlsx"
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 

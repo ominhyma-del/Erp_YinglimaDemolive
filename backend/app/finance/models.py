@@ -172,3 +172,102 @@ class ConsignmentOverviewMeta(Base):
     )
 
 
+class VatReturnRecord(Base):
+    """
+    Stores Export VAT Return (China Export Tax Rebate / 出口退税) shipment ledger records.
+    Supports both live Confirmed Sales Process orders (`source_type='sale_order'`)
+    and imported/manual historical shipments (`source_type='manual'`).
+    """
+
+    __tablename__ = "vat_return_records"
+    __table_args__ = (
+        UniqueConstraint("exp_no", name="uq_vat_return_records_exp_no"),
+        Index("ix_vat_return_records_exp_no", "exp_no"),
+        Index("ix_vat_return_records_source", "source_type", "source_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="sale_order")
+    source_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+    exp_no: Mapped[str] = mapped_column(String(120), nullable=False)
+    invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    financial_year: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    consignment_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    buyer_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    organization_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    first_filing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    receiving_date_text: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    status_override: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    total_rmb_incl_vat_override: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2), nullable=True
+    )
+    total_vat_return_override: Mapped[Decimal | None] = mapped_column(
+        Numeric(15, 2), nullable=True
+    )
+
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    items_override_json: Mapped[str | None] = mapped_column(Text, nullable=True, default="[]")
+
+    updated_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    updated_by_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class VatReturnReceipt(Base):
+    """
+    Stores full or partial VAT refund receipts from the China Tax Bureau
+    against a VatReturnRecord.
+    """
+
+    __tablename__ = "vat_return_receipts"
+    __table_args__ = (
+        Index("ix_vat_return_receipts_record", "vat_record_id"),
+        Index("ix_vat_return_receipts_exp_no", "exp_no"),
+        Index("ix_vat_return_receipts_date", "receipt_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    vat_record_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    exp_no: Mapped[str] = mapped_column(String(120), nullable=False)
+
+    receipt_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount_rmb: Mapped[Decimal] = mapped_column(
+        Numeric(15, 2), nullable=False, default=Decimal("0.00")
+    )
+    reference_no: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_by_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

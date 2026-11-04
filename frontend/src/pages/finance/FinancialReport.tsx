@@ -266,6 +266,13 @@ export function FinancialReportPage() {
     setSearchParams({ section: activeSection, stage: st }, { replace: true });
   };
 
+  const handleKpiSelect = (sec: ActiveSection, st: FinanceStage) => {
+    setActiveSection(sec);
+    setActiveStage(st);
+    setCurrentPage(1);
+    setSearchParams({ section: sec, stage: st }, { replace: true });
+  };
+
   const handleResetFilters = () => {
     setSearchInput("");
     setPartyFilter("");
@@ -726,11 +733,6 @@ export function FinancialReportPage() {
             >
               Finance Planning Report
             </h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
-              Automatic financial tracking for all <strong>Confirmed</strong> Local Purchases
-              (Supplier Outward Payables) &amp; Sales Process Orders (Buyer Export &amp; Agent
-              Freight).
-            </p>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -936,11 +938,14 @@ export function FinancialReportPage() {
         >
           {/* Local Purchase ALL */}
           <div
-            onClick={() => handleSectionChange("local_purchase")}
+            onClick={() => handleKpiSelect("local_purchase", "all")}
             style={{
-              background: "#ffffff",
+              background:
+                activeSection === "local_purchase" && activeStage === "all"
+                  ? "#f8fbff"
+                  : "#ffffff",
               border:
-                activeSection === "local_purchase"
+                activeSection === "local_purchase" && activeStage === "all"
                   ? "1.5px solid #3b82f6"
                   : "1px solid #e2e8f0",
               borderRadius: 8,
@@ -965,13 +970,16 @@ export function FinancialReportPage() {
 
           {/* Local Purchase PAID */}
           <div
-            onClick={() => {
-              handleSectionChange("local_purchase");
-              handleStageChange("cleared");
-            }}
+            onClick={() => handleKpiSelect("local_purchase", "cleared")}
             style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
+              background:
+                activeSection === "local_purchase" && activeStage === "cleared"
+                  ? "#f8fbff"
+                  : "#ffffff",
+              border:
+                activeSection === "local_purchase" && activeStage === "cleared"
+                  ? "1.5px solid #3b82f6"
+                  : "1px solid #e2e8f0",
               borderRadius: 8,
               padding: "14px 16px",
               cursor: "pointer",
@@ -991,13 +999,16 @@ export function FinancialReportPage() {
 
           {/* Local Purchase BALANCE */}
           <div
-            onClick={() => {
-              handleSectionChange("local_purchase");
-              handleStageChange("pending");
-            }}
+            onClick={() => handleKpiSelect("local_purchase", "pending")}
             style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
+              background:
+                activeSection === "local_purchase" && activeStage === "pending"
+                  ? "#f8fbff"
+                  : "#ffffff",
+              border:
+                activeSection === "local_purchase" && activeStage === "pending"
+                  ? "1.5px solid #3b82f6"
+                  : "1px solid #e2e8f0",
               borderRadius: 8,
               padding: "14px 16px",
               cursor: "pointer",
@@ -1017,11 +1028,14 @@ export function FinancialReportPage() {
 
           {/* Sales Process ALL */}
           <div
-            onClick={() => handleSectionChange("sale_order")}
+            onClick={() => handleKpiSelect("sale_order", "all")}
             style={{
-              background: "#ffffff",
+              background:
+                activeSection === "sale_order" && activeStage === "all"
+                  ? "#f8fbff"
+                  : "#ffffff",
               border:
-                activeSection === "sale_order"
+                activeSection === "sale_order" && activeStage === "all"
                   ? "1.5px solid #3b82f6"
                   : "1px solid #e2e8f0",
               borderRadius: 8,
@@ -1046,13 +1060,16 @@ export function FinancialReportPage() {
 
           {/* Sales Process PAID / RECEIVED */}
           <div
-            onClick={() => {
-              handleSectionChange("sale_order");
-              handleStageChange("cleared");
-            }}
+            onClick={() => handleKpiSelect("sale_order", "cleared")}
             style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
+              background:
+                activeSection === "sale_order" && activeStage === "cleared"
+                  ? "#f8fbff"
+                  : "#ffffff",
+              border:
+                activeSection === "sale_order" && activeStage === "cleared"
+                  ? "1.5px solid #3b82f6"
+                  : "1px solid #e2e8f0",
               borderRadius: 8,
               padding: "14px 16px",
               cursor: "pointer",
@@ -1072,13 +1089,16 @@ export function FinancialReportPage() {
 
           {/* Sales Process BALANCE */}
           <div
-            onClick={() => {
-              handleSectionChange("sale_order");
-              handleStageChange("pending");
-            }}
+            onClick={() => handleKpiSelect("sale_order", "pending")}
             style={{
-              background: "#ffffff",
-              border: "1px solid #e2e8f0",
+              background:
+                activeSection === "sale_order" && activeStage === "pending"
+                  ? "#f8fbff"
+                  : "#ffffff",
+              border:
+                activeSection === "sale_order" && activeStage === "pending"
+                  ? "1.5px solid #3b82f6"
+                  : "1px solid #e2e8f0",
               borderRadius: 8,
               padding: "14px 16px",
               cursor: "pointer",

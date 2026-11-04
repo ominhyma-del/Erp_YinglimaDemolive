@@ -290,3 +290,146 @@ class ConsignmentChecklistUpdatePayload(BaseModel):
     forwarder_name: str | None = None
 
 
+# ==============================================================================
+# VAT Return (China Export Tax Rebate / 出口退税) Schemas
+# ==============================================================================
+
+VatReturnStatusLiteral = Literal["RECEIVED", "PARTIAL RECEIVED", "PENDING", "NO VAT"]
+VatReturnStageFilterLiteral = Literal["all", "pending", "partial", "received", "no_vat"]
+
+
+class VatReturnBreakdownItem(BaseModel):
+    item_key: str
+    order_no: str
+    contract_date: str | None = None
+    contract_no: str | None = None
+    supplier_name: str = "—"
+    product_id: str | None = None
+    product_name: str
+    product_code: str | None = None
+    hsn_code: str | None = None
+    quantity: float = 0.0
+    rmb_price_with_vat: float = 0.0
+    total_rmb_incl_vat: float = 0.0
+    usd_price: float = 0.0
+    remarks_usd: str | None = None
+    purchase_vat_percent: float = 13.0
+    refund_vat_percent: float = 13.0
+    vat_to_be_returned: float = 0.0
+    remarks: str | None = None
+    first_filing_date: str | None = None
+
+
+class VatReturnReceiptCreate(BaseModel):
+    receipt_date: date
+    amount_rmb: float = Field(..., gt=0, description="VAT refund amount received in RMB (¥)")
+    reference_no: str | None = Field(default=None, max_length=150)
+    remarks: str | None = Field(default=None)
+
+
+class VatReturnReceiptResponse(BaseModel):
+    id: uuid.UUID
+    vat_record_id: uuid.UUID
+    exp_no: str
+    receipt_date: date
+    amount_rmb: float
+    reference_no: str | None = None
+    remarks: str | None = None
+    created_by_id: uuid.UUID | None = None
+    created_by_name: str | None = None
+    created_at: datetime | None = None
+
+
+class VatReturnRow(BaseModel):
+    record_key: str
+    vat_record_id: uuid.UUID | None = None
+    source_type: Literal["sale_order", "manual"] = "sale_order"
+    source_id: uuid.UUID
+    exp_no: str
+    invoice_date: date | None = None
+    financial_year: str = "2026-2027"
+    consignment_code: str | None = None
+    buyer_name: str | None = None
+    organization_name: str | None = None
+    source_status: str = "confirmed"
+
+    # Financials (RMB ¥ + USD $)
+    total_rmb_incl_vat: float = 0.0
+    total_vat_return_rmb: float = 0.0
+    received_vat_rmb: float = 0.0
+    balance_vat_rmb: float = 0.0
+    usd_exchange_rate: float = 7.20
+    total_vat_return_usd: float = 0.0
+    received_vat_usd: float = 0.0
+    balance_vat_usd: float = 0.0
+
+    # Status & Dates
+    status: VatReturnStatusLiteral = "PENDING"
+    stage_key: Literal["pending", "partial", "received", "no_vat"] = "pending"
+    receiving_date_display: str | None = None
+    partial_amount_display: float = 0.0
+    first_filing_date: date | None = None
+    remarks: str | None = None
+
+    # Breakdown & Receipts
+    items_count: int = 0
+    breakdown_items: list[VatReturnBreakdownItem] = Field(default_factory=list)
+    receipts_count: int = 0
+    receipts: list[VatReturnReceiptResponse] = Field(default_factory=list)
+
+
+class VatReturnKpiSummary(BaseModel):
+    total_records: int = 0
+    pending_records: int = 0
+    partial_records: int = 0
+    received_records: int = 0
+    no_vat_records: int = 0
+    total_rmb_incl_vat: float = 0.0
+    total_vat_return_rmb: float = 0.0
+    received_vat_rmb: float = 0.0
+    partial_received_vat_rmb: float = 0.0
+    balance_vat_rmb: float = 0.0
+    usd_to_rmb_rate: float = 7.20
+    total_vat_return_usd: float = 0.0
+    received_vat_usd: float = 0.0
+    balance_vat_usd: float = 0.0
+
+
+class VatReturnListResponse(BaseModel):
+    kpi: VatReturnKpiSummary
+    available_financial_years: list[str] = Field(default_factory=list)
+    items: list[VatReturnRow] = Field(default_factory=list)
+
+
+class VatReturnUpdatePayload(BaseModel):
+    exp_no: str | None = None
+    invoice_date: date | None = None
+    financial_year: str | None = None
+    consignment_code: str | None = None
+    buyer_name: str | None = None
+    first_filing_date: date | None = None
+    receiving_date_text: str | None = None
+    status_override: str | None = None
+    total_rmb_incl_vat_override: float | None = None
+    total_vat_return_override: float | None = None
+    remarks: str | None = None
+    breakdown_items: list[VatReturnBreakdownItem] | None = None
+
+
+class VatReturnManualCreatePayload(BaseModel):
+    exp_no: str = Field(..., min_length=1, max_length=120)
+    invoice_date: date | None = None
+    financial_year: str | None = None
+    consignment_code: str | None = None
+    buyer_name: str | None = None
+    first_filing_date: date | None = None
+    receiving_date_text: str | None = None
+    status_override: str | None = None
+    total_rmb_incl_vat_override: float | None = None
+    total_vat_return_override: float | None = None
+    received_amount_rmb: float | None = Field(default=None, ge=0)
+    remarks: str | None = None
+    breakdown_items: list[VatReturnBreakdownItem] | None = None
+
+
+

@@ -24,7 +24,13 @@ from app.common.currency import get_active_rates
 from app.common.storage import sanitize_filename, save_uploaded_file
 from app.core.exceptions import NotFoundException, ValidationException
 from app.core.logging import get_logger
-from app.finance.models import ConsignmentOverviewMeta, FinancePayment, FinanceRecordMeta
+from app.finance.models import (
+    ConsignmentOverviewMeta,
+    FinancePayment,
+    FinanceRecordMeta,
+    VatReturnReceipt,
+    VatReturnRecord,
+)
 from app.finance.schemas import (
     ConsignmentChecklistItem,
     ConsignmentChecklistUpdatePayload,
@@ -40,7 +46,19 @@ from app.finance.schemas import (
     LocalPurchaseFinanceRow,
     SaleOrderFinanceRow,
     SectionKpiSummary,
+    VatReturnBreakdownItem,
+    VatReturnKpiSummary,
+    VatReturnListResponse,
+    VatReturnManualCreatePayload,
+    VatReturnReceiptCreate,
+    VatReturnReceiptResponse,
+    VatReturnRow,
+    VatReturnStageFilterLiteral,
+    VatReturnStatusLiteral,
+    VatReturnUpdatePayload,
 )
+from app.masters.hsn.models import HsnCode
+from app.masters.products.models import Product
 from app.planning.models import PlanningColumn
 from app.purchases.local.models import LocalPurchase
 from app.purchases.local.service import LocalPurchaseService
@@ -1726,4 +1744,1430 @@ class FinanceService:
         meta.updated_by_name = user_name
         await self.session.commit()
         return {"deleted": True, "slot_key": slot_key, "consignment_key": consignment_key}
+
+    # ==========================================================================
+    # VAT Return (China Export Tax Rebate / 出口退税) Engine
+    # ==========================================================================
+
+    async def _ensure_vat_return_tables(self) -> None:
+        global _CONSIGNMENT_TABLE_VERIFIED
+        try:
+            await self.session.execute(
+                text("""
+                    CREATE TABLE IF NOT EXISTS vat_return_records (
+                        id UUID PRIMARY KEY,
+                        source_type VARCHAR(32) NOT NULL DEFAULT 'sale_order',
+                        source_id UUID NOT NULL,
+                        exp_no VARCHAR(120) NOT NULL UNIQUE,
+                        invoice_date DATE,
+                        financial_year VARCHAR(32),
+                        consignment_code VARCHAR(120),
+                        buyer_name VARCHAR(200),
+                        organization_name VARCHAR(150),
+                        first_filing_date DATE,
+                        receiving_date_text VARCHAR(150),
+                        status_override VARCHAR(40),
+                        total_rmb_incl_vat_override NUMERIC(15, 2),
+                        total_vat_return_override NUMERIC(15, 2),
+                        remarks TEXT,
+                        items_override_json TEXT DEFAULT '[]',
+                        updated_by_id UUID,
+                        updated_by_name VARCHAR(150),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        deleted_at TIMESTAMPTZ
+                    )
+                """)
+            )
+            await self.session.execute(
+                text("""
+                    CREATE TABLE IF NOT EXISTS vat_return_receipts (
+                        id UUID PRIMARY KEY,
+                        vat_record_id UUID NOT NULL,
+                        exp_no VARCHAR(120) NOT NULL,
+                        receipt_date DATE NOT NULL,
+                        amount_rmb NUMERIC(15, 2) NOT NULL DEFAULT 0.00,
+                        reference_no VARCHAR(150),
+                        remarks TEXT,
+                        created_by_id UUID,
+                        created_by_name VARCHAR(150),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        deleted_at TIMESTAMPTZ
+                    )
+                """)
+            )
+            await self.session.commit()
+        except Exception as exc:
+            logger.warning("Could not auto-create vat_return tables: %s", exc)
+            await self.session.rollback()
+
+    @staticmethod
+    def _derive_financial_year(inv_date: date | None, exp_no: str) -> str:
+        if inv_date:
+            # April-March or calendar year grouping: look at year in EXP No first if present
+            m = re.search(r"20(2[0-9])", exp_no or "")
+            if m:
+                yr = int("20" + m.group(1))
+                return f"{yr}-{yr + 1}"
+            yr = inv_date.year if inv_date.month >= 4 else inv_date.year - 1
+            return f"{yr}-{yr + 1}"
+        m = re.search(r"20(2[0-9])", exp_no or "")
+        if m:
+            yr = int("20" + m.group(1))
+            return f"{yr}-{yr + 1}"
+        return "2026-2027"
+
+    @staticmethod
+    def _normalize_exp_key(val: str) -> str:
+        """
+        Normalizes `EXP2025 - 01`, `YL-EXP2025-01`, `EXP 2025-01` to a canonical lookup key
+        so Table 1 summary rows and Table 2 `YL-EXP...` product breakdown rows link automatically.
+        """
+        s = (val or "").strip().upper()
+        s = re.sub(r"^YL[\s\-_]*", "", s)
+        s = re.sub(r"\s+", "", s)
+        return s
+
+    @staticmethod
+    def _compute_item_vat_return(
+        total_rmb_incl_vat: float,
+        purchase_vat_pct: float,
+        refund_vat_pct: float,
+    ) -> float:
+        if total_rmb_incl_vat <= 0 or refund_vat_pct <= 0:
+            return 0.0
+        denom = 1.0 + (purchase_vat_pct / 100.0 if purchase_vat_pct >= 0 else 0.13)
+        if denom <= 0:
+            denom = 1.13
+        return round((total_rmb_incl_vat / denom) * (refund_vat_pct / 100.0), 2)
+
+    async def list_vat_returns(
+        self,
+        *,
+        stage: VatReturnStageFilterLiteral = "all",
+        financial_year: str | None = None,
+        search: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> VatReturnListResponse:
+        await self._ensure_vat_return_tables()
+        usd_to_rmb = await self._get_usd_to_rmb_rate()
+
+        # 1. Load all Confirmed/Dispatched/LR Sales Process orders + line items
+        so_stmt = (
+            select(SaleOrder)
+            .options(joinedload(SaleOrder.items))
+            .where(
+                SaleOrder.deleted_at.is_(None),
+                func.lower(SaleOrder.status).notin_(EXCLUDED_STATUSES),
+            )
+            .order_by(SaleOrder.order_date.desc(), SaleOrder.created_at.desc())
+        )
+        sale_orders = list((await self.session.execute(so_stmt)).unique().scalars().all())
+
+        # 2. Load Product and HSN VAT % lookup maps
+        prod_stmt = select(
+            Product.id,
+            Product.purchase_vat_percent,
+            Product.refund_vat_percent,
+            Product.hsn_id,
+        ).where(Product.deleted_at.is_(None))
+        prod_rows = (await self.session.execute(prod_stmt)).all()
+
+        hsn_stmt = select(
+            HsnCode.id,
+            HsnCode.code,
+            HsnCode.purchase_vat_percent,
+            HsnCode.refund_vat_percent,
+        ).where(HsnCode.deleted_at.is_(None))
+        hsn_rows = (await self.session.execute(hsn_stmt)).all()
+        hsn_by_id = {r.id: r for r in hsn_rows}
+        hsn_by_code = {(r.code or "").strip().upper(): r for r in hsn_rows if r.code}
+
+        prod_vat_map: dict[uuid.UUID, tuple[float, float]] = {}
+        for pr in prod_rows:
+            p_vat = _to_float(pr.purchase_vat_percent, 0.0)
+            r_vat = _to_float(pr.refund_vat_percent, 0.0)
+            if (p_vat <= 0 and r_vat <= 0) and pr.hsn_id and pr.hsn_id in hsn_by_id:
+                h = hsn_by_id[pr.hsn_id]
+                p_vat = _to_float(h.purchase_vat_percent, 13.0)
+                r_vat = _to_float(h.refund_vat_percent, 13.0)
+            if p_vat <= 0:
+                p_vat = 13.0
+            if r_vat <= 0 and _to_float(pr.refund_vat_percent, -1.0) != 0.0:
+                r_vat = 13.0
+            prod_vat_map[pr.id] = (p_vat, r_vat)
+
+        # 3. Load Confirmed LocalPurchases to auto-link Supplier Contract No. & Contract Date
+        lp_stmt = (
+            select(LocalPurchase)
+            .where(
+                LocalPurchase.deleted_at.is_(None),
+                func.lower(LocalPurchase.status).notin_(EXCLUDED_STATUSES),
+            )
+            .order_by(LocalPurchase.invoice_date.desc())
+        )
+        local_purchases = list((await self.session.execute(lp_stmt)).scalars().all())
+        lp_by_cons_supplier: dict[tuple[str, str], LocalPurchase] = {}
+        lp_by_supplier: dict[str, LocalPurchase] = {}
+        for lp in local_purchases:
+            c_key = (lp.consignment_code or "").strip().upper()
+            s_key = (lp.supplier_name or "").strip().upper()
+            if c_key and s_key and (c_key, s_key) not in lp_by_cons_supplier:
+                lp_by_cons_supplier[(c_key, s_key)] = lp
+            if s_key and s_key not in lp_by_supplier:
+                lp_by_supplier[s_key] = lp
+
+        # 4. Load stored VatReturnRecord overrides & manual/imported rows
+        vr_stmt = (
+            select(VatReturnRecord)
+            .where(VatReturnRecord.deleted_at.is_(None))
+            .order_by(VatReturnRecord.invoice_date.desc().nullslast(), VatReturnRecord.created_at.desc())
+        )
+        vr_records = list((await self.session.execute(vr_stmt)).scalars().all())
+        vr_by_so_id: dict[uuid.UUID, VatReturnRecord] = {}
+        vr_by_norm_exp: dict[str, VatReturnRecord] = {}
+        for vr in vr_records:
+            if vr.source_type == "sale_order":
+                vr_by_so_id[vr.source_id] = vr
+            norm_k = self._normalize_exp_key(vr.exp_no)
+            if norm_k:
+                vr_by_norm_exp[norm_k] = vr
+
+        # 5. Load all active VatReturnReceipt records
+        rec_stmt = (
+            select(VatReturnReceipt)
+            .where(VatReturnReceipt.deleted_at.is_(None))
+            .order_by(VatReturnReceipt.receipt_date.asc(), VatReturnReceipt.created_at.asc())
+        )
+        all_receipts = list((await self.session.execute(rec_stmt)).scalars().all())
+        receipts_by_record_id: dict[uuid.UUID, list[VatReturnReceiptResponse]] = {}
+        receipts_by_norm_exp: dict[str, list[VatReturnReceiptResponse]] = {}
+        for r in all_receipts:
+            resp = VatReturnReceiptResponse(
+                id=r.id,
+                vat_record_id=r.vat_record_id,
+                exp_no=r.exp_no,
+                receipt_date=r.receipt_date,
+                amount_rmb=_to_float(r.amount_rmb),
+                reference_no=r.reference_no,
+                remarks=r.remarks,
+                created_by_id=r.created_by_id,
+                created_by_name=r.created_by_name,
+                created_at=r.created_at,
+            )
+            receipts_by_record_id.setdefault(r.vat_record_id, []).append(resp)
+            nk = self._normalize_exp_key(r.exp_no)
+            if nk:
+                receipts_by_norm_exp.setdefault(nk, []).append(resp)
+
+        rows: list[VatReturnRow] = []
+        matched_vr_ids: set[uuid.UUID] = set()
+
+        # 6. Build live rows from Confirmed SaleOrders
+        for so in sale_orders:
+            norm_so_exp = self._normalize_exp_key(so.order_no)
+            vr = vr_by_so_id.get(so.id) or vr_by_norm_exp.get(norm_so_exp)
+            if vr:
+                matched_vr_ids.add(vr.id)
+
+            exp_no = (vr.exp_no if vr and vr.exp_no else so.order_no).strip()
+            inv_date = (vr.invoice_date if vr and vr.invoice_date else so.order_date)
+            fy = (vr.financial_year if vr and vr.financial_year else self._derive_financial_year(inv_date, exp_no))
+            first_filing = vr.first_filing_date if vr else None
+            so_rate = _to_float(so.usd_exchange_rate, usd_to_rmb)
+            if so_rate <= 0:
+                so_rate = usd_to_rmb
+
+            # Parse item overrides if stored
+            override_items_by_key: dict[str, dict[str, Any]] = {}
+            override_items_list: list[dict[str, Any]] = []
+            if vr and vr.items_override_json:
+                try:
+                    parsed = json.loads(vr.items_override_json)
+                    if isinstance(parsed, list):
+                        override_items_list = parsed
+                        for it in parsed:
+                            if isinstance(it, dict) and it.get("item_key"):
+                                override_items_by_key[str(it["item_key"])] = it
+                except Exception:
+                    pass
+
+            breakdown_items: list[VatReturnBreakdownItem] = []
+            if so.items:
+                for idx, item in enumerate(so.items, start=1):
+                    ikey = str(item.id)
+                    ov = override_items_by_key.get(ikey, {})
+
+                    # Default VAT % from Product or HSN (standard China VAT = 13%)
+                    p_vat, r_vat = 13.0, 13.0
+                    if item.product_id and item.product_id in prod_vat_map:
+                        p_vat, r_vat = prod_vat_map[item.product_id]
+                    elif item.hsn_code and item.hsn_code.strip().upper() in hsn_by_code:
+                        h = hsn_by_code[item.hsn_code.strip().upper()]
+                        p_vat = _to_float(h.purchase_vat_percent, 13.0) or 13.0
+                        r_vat = _to_float(h.refund_vat_percent, 13.0) or 13.0
+
+                    if "purchase_vat_percent" in ov and ov["purchase_vat_percent"] is not None:
+                        p_vat = _to_float(ov["purchase_vat_percent"], p_vat)
+                    if "refund_vat_percent" in ov and ov["refund_vat_percent"] is not None:
+                        r_vat = _to_float(ov["refund_vat_percent"], r_vat)
+
+                    qty = _to_float(ov.get("quantity"), _to_float(item.quantity, 0.0))
+                    rmb_unit = _to_float(
+                        ov.get("rmb_price_with_vat"),
+                        _to_float(item.unit_price_rmb_with_vat, 0.0),
+                    )
+                    total_rmb = _to_float(
+                        ov.get("total_rmb_incl_vat"),
+                        _to_float(item.total_supplier_amount_rmb, round(qty * rmb_unit, 2)),
+                    )
+                    if total_rmb <= 0 and qty > 0 and rmb_unit > 0:
+                        total_rmb = round(qty * rmb_unit, 2)
+
+                    usd_unit = _to_float(
+                        ov.get("usd_price"),
+                        _to_float(item.cfr_price_usd or item.fob_price_usd or item.unit_rate, 0.0),
+                    )
+
+                    # Match LocalPurchase for Contract No. & Contract Date
+                    c_key = (so.consignment_code or "").strip().upper()
+                    s_key = (item.supplier_name or "").strip().upper()
+                    matched_lp = lp_by_cons_supplier.get((c_key, s_key)) or lp_by_supplier.get(s_key)
+                    default_contract_no = matched_lp.invoice_no if matched_lp else None
+                    default_contract_date = (
+                        matched_lp.invoice_date.isoformat()
+                        if matched_lp and matched_lp.invoice_date
+                        else (inv_date.isoformat() if inv_date else None)
+                    )
+
+                    vat_returned = (
+                        _to_float(ov["vat_to_be_returned"])
+                        if "vat_to_be_returned" in ov and ov["vat_to_be_returned"] is not None
+                        else self._compute_item_vat_return(total_rmb, p_vat, r_vat)
+                    )
+
+                    breakdown_items.append(
+                        VatReturnBreakdownItem(
+                            item_key=ikey,
+                            order_no=ov.get("order_no") or (f"YL-{exp_no}" if not exp_no.upper().startswith("YL-") else exp_no),
+                            contract_date=ov.get("contract_date") or default_contract_date,
+                            contract_no=ov.get("contract_no") or default_contract_no,
+                            supplier_name=ov.get("supplier_name") or item.supplier_name or "—",
+                            product_id=str(item.product_id) if item.product_id else None,
+                            product_name=ov.get("product_name") or item.product_name,
+                            product_code=item.product_code,
+                            hsn_code=item.hsn_code,
+                            quantity=qty,
+                            rmb_price_with_vat=rmb_unit,
+                            total_rmb_incl_vat=total_rmb,
+                            usd_price=usd_unit,
+                            remarks_usd=ov.get("remarks_usd"),
+                            purchase_vat_percent=p_vat,
+                            refund_vat_percent=r_vat,
+                            vat_to_be_returned=vat_returned,
+                            remarks=ov.get("remarks") if "remarks" in ov else item.remarks,
+                            first_filing_date=ov.get("first_filing_date")
+                            or (first_filing.isoformat() if first_filing else None),
+                        )
+                    )
+            elif override_items_list:
+                for idx, ov in enumerate(override_items_list, start=1):
+                    qty = _to_float(ov.get("quantity"), 0.0)
+                    rmb_unit = _to_float(ov.get("rmb_price_with_vat"), 0.0)
+                    total_rmb = _to_float(ov.get("total_rmb_incl_vat"), round(qty * rmb_unit, 2))
+                    p_vat = _to_float(ov.get("purchase_vat_percent"), 13.0)
+                    r_vat = _to_float(ov.get("refund_vat_percent"), 13.0)
+                    vat_ret = (
+                        _to_float(ov["vat_to_be_returned"])
+                        if ov.get("vat_to_be_returned") is not None
+                        else self._compute_item_vat_return(total_rmb, p_vat, r_vat)
+                    )
+                    breakdown_items.append(
+                        VatReturnBreakdownItem(
+                            item_key=str(ov.get("item_key") or f"item-{idx}"),
+                            order_no=str(ov.get("order_no") or f"YL-{exp_no}"),
+                            contract_date=ov.get("contract_date"),
+                            contract_no=ov.get("contract_no"),
+                            supplier_name=str(ov.get("supplier_name") or "—"),
+                            product_name=str(ov.get("product_name") or "—"),
+                            quantity=qty,
+                            rmb_price_with_vat=rmb_unit,
+                            total_rmb_incl_vat=total_rmb,
+                            usd_price=_to_float(ov.get("usd_price"), 0.0),
+                            remarks_usd=ov.get("remarks_usd"),
+                            purchase_vat_percent=p_vat,
+                            refund_vat_percent=r_vat,
+                            vat_to_be_returned=vat_ret,
+                            remarks=ov.get("remarks"),
+                            first_filing_date=ov.get("first_filing_date"),
+                        )
+                    )
+
+            computed_rmb_incl = round(sum(i.total_rmb_incl_vat for i in breakdown_items), 2)
+            computed_vat_return = round(sum(i.vat_to_be_returned for i in breakdown_items), 2)
+
+            total_rmb_incl = (
+                _to_float(vr.total_rmb_incl_vat_override)
+                if vr and vr.total_rmb_incl_vat_override is not None
+                else computed_rmb_incl
+            )
+            total_vat_return = (
+                _to_float(vr.total_vat_return_override)
+                if vr and vr.total_vat_return_override is not None
+                else computed_vat_return
+            )
+
+            row_receipts: list[VatReturnReceiptResponse] = []
+            if vr and vr.id in receipts_by_record_id:
+                row_receipts = receipts_by_record_id[vr.id]
+            elif norm_so_exp in receipts_by_norm_exp:
+                row_receipts = receipts_by_norm_exp[norm_so_exp]
+
+            row = self._build_vat_return_row(
+                record_key=f"SO:{so.id}",
+                vat_record_id=vr.id if vr else None,
+                source_type="sale_order",
+                source_id=so.id,
+                exp_no=exp_no,
+                invoice_date=inv_date,
+                financial_year=fy,
+                consignment_code=vr.consignment_code if vr and vr.consignment_code else so.consignment_code,
+                buyer_name=vr.buyer_name if vr and vr.buyer_name else so.buyer_name,
+                organization_name=so.organization_name,
+                source_status=so.status,
+                total_rmb_incl_vat=total_rmb_incl,
+                total_vat_return_rmb=total_vat_return,
+                usd_exchange_rate=so_rate,
+                status_override=vr.status_override if vr else None,
+                receiving_date_text=vr.receiving_date_text if vr else None,
+                first_filing_date=first_filing,
+                remarks=vr.remarks if vr and vr.remarks is not None else so.remarks,
+                breakdown_items=breakdown_items,
+                receipts=row_receipts,
+            )
+            rows.append(row)
+
+        # 7. Append standalone / imported VatReturnRecords not tied to an active SaleOrder
+        for vr in vr_records:
+            if vr.id in matched_vr_ids:
+                continue
+
+            breakdown_items: list[VatReturnBreakdownItem] = []
+            if vr.items_override_json:
+                try:
+                    parsed = json.loads(vr.items_override_json)
+                    if isinstance(parsed, list):
+                        for idx, ov in enumerate(parsed, start=1):
+                            if not isinstance(ov, dict):
+                                continue
+                            qty = _to_float(ov.get("quantity"), 0.0)
+                            rmb_unit = _to_float(ov.get("rmb_price_with_vat"), 0.0)
+                            total_rmb = _to_float(ov.get("total_rmb_incl_vat"), round(qty * rmb_unit, 2))
+                            p_vat = _to_float(ov.get("purchase_vat_percent"), 13.0)
+                            r_vat = _to_float(ov.get("refund_vat_percent"), 13.0)
+                            vat_ret = (
+                                _to_float(ov["vat_to_be_returned"])
+                                if ov.get("vat_to_be_returned") is not None
+                                else self._compute_item_vat_return(total_rmb, p_vat, r_vat)
+                            )
+                            breakdown_items.append(
+                                VatReturnBreakdownItem(
+                                    item_key=str(ov.get("item_key") or f"imp-{idx}"),
+                                    order_no=str(ov.get("order_no") or f"YL-{vr.exp_no}"),
+                                    contract_date=ov.get("contract_date"),
+                                    contract_no=ov.get("contract_no"),
+                                    supplier_name=str(ov.get("supplier_name") or "—"),
+                                    product_name=str(ov.get("product_name") or "—"),
+                                    product_code=ov.get("product_code"),
+                                    hsn_code=ov.get("hsn_code"),
+                                    quantity=qty,
+                                    rmb_price_with_vat=rmb_unit,
+                                    total_rmb_incl_vat=total_rmb,
+                                    usd_price=_to_float(ov.get("usd_price"), 0.0),
+                                    remarks_usd=ov.get("remarks_usd"),
+                                    purchase_vat_percent=p_vat,
+                                    refund_vat_percent=r_vat,
+                                    vat_to_be_returned=vat_ret,
+                                    remarks=ov.get("remarks"),
+                                    first_filing_date=ov.get("first_filing_date")
+                                    or (vr.first_filing_date.isoformat() if vr.first_filing_date else None),
+                                )
+                            )
+                except Exception:
+                    pass
+
+            computed_rmb_incl = round(sum(i.total_rmb_incl_vat for i in breakdown_items), 2)
+            computed_vat_return = round(sum(i.vat_to_be_returned for i in breakdown_items), 2)
+
+            total_rmb_incl = (
+                _to_float(vr.total_rmb_incl_vat_override)
+                if vr.total_rmb_incl_vat_override is not None
+                else computed_rmb_incl
+            )
+            total_vat_return = (
+                _to_float(vr.total_vat_return_override)
+                if vr.total_vat_return_override is not None
+                else computed_vat_return
+            )
+
+            fy = vr.financial_year or self._derive_financial_year(vr.invoice_date, vr.exp_no)
+            row_receipts = receipts_by_record_id.get(vr.id, [])
+
+            row = self._build_vat_return_row(
+                record_key=f"VR:{vr.id}",
+                vat_record_id=vr.id,
+                source_type="manual",
+                source_id=vr.source_id,
+                exp_no=vr.exp_no,
+                invoice_date=vr.invoice_date,
+                financial_year=fy,
+                consignment_code=vr.consignment_code,
+                buyer_name=vr.buyer_name,
+                organization_name=vr.organization_name or "Yinglima",
+                source_status="imported",
+                total_rmb_incl_vat=total_rmb_incl,
+                total_vat_return_rmb=total_vat_return,
+                usd_exchange_rate=usd_to_rmb,
+                status_override=vr.status_override,
+                receiving_date_text=vr.receiving_date_text,
+                first_filing_date=vr.first_filing_date,
+                remarks=vr.remarks,
+                breakdown_items=breakdown_items,
+                receipts=row_receipts,
+            )
+            rows.append(row)
+
+        # Sort newest first by invoice_date, then exp_no descending
+        rows.sort(
+            key=lambda r: (
+                r.invoice_date.isoformat() if r.invoice_date else "0000-00-00",
+                r.exp_no,
+            ),
+            reverse=True,
+        )
+
+        # Collect available Financial Years across all records
+        fy_set = {r.financial_year for r in rows if r.financial_year}
+        fy_set.update(["2026-2027", "2025-2026", "2024-2025", "2023-2024"])
+        available_fys = sorted(fy_set, reverse=True)
+
+        # Apply Financial Year, Date Range, and Search filters BEFORE computing KPI summary
+        # so KPI cards reflect the selected Financial Year / search context while keeping stage counts accurate
+        filtered_for_kpi: list[VatReturnRow] = []
+        q = (search or "").strip().lower()
+        fy_filter = (financial_year or "").strip()
+
+        for r in rows:
+            if fy_filter and fy_filter.lower() != "all" and r.financial_year != fy_filter:
+                continue
+            if date_from and r.invoice_date and r.invoice_date < date_from:
+                continue
+            if date_to and r.invoice_date and r.invoice_date > date_to:
+                continue
+            if q:
+                haystack = " ".join(
+                    filter(
+                        None,
+                        [
+                            r.exp_no,
+                            r.consignment_code,
+                            r.buyer_name,
+                            r.status,
+                            r.remarks,
+                            r.receiving_date_display,
+                            " ".join(f"{bi.supplier_name} {bi.product_name} {bi.contract_no or ''}" for bi in r.breakdown_items),
+                        ],
+                    )
+                ).lower()
+                if q not in haystack:
+                    continue
+            filtered_for_kpi.append(r)
+
+        # Compute KPI Summary across `filtered_for_kpi`
+        total_rmb_incl_sum = round(sum(r.total_rmb_incl_vat for r in filtered_for_kpi), 2)
+        total_vat_sum = round(sum(r.total_vat_return_rmb for r in filtered_for_kpi), 2)
+        received_vat_sum = round(sum(r.received_vat_rmb for r in filtered_for_kpi), 2)
+        partial_vat_sum = round(
+            sum(r.received_vat_rmb for r in filtered_for_kpi if r.stage_key == "partial"), 2
+        )
+        balance_vat_sum = round(sum(r.balance_vat_rmb for r in filtered_for_kpi), 2)
+
+        kpi = VatReturnKpiSummary(
+            total_records=len(filtered_for_kpi),
+            pending_records=sum(1 for r in filtered_for_kpi if r.stage_key == "pending"),
+            partial_records=sum(1 for r in filtered_for_kpi if r.stage_key == "partial"),
+            received_records=sum(1 for r in filtered_for_kpi if r.stage_key == "received"),
+            no_vat_records=sum(1 for r in filtered_for_kpi if r.stage_key == "no_vat"),
+            total_rmb_incl_vat=total_rmb_incl_sum,
+            total_vat_return_rmb=total_vat_sum,
+            received_vat_rmb=received_vat_sum,
+            partial_received_vat_rmb=partial_vat_sum,
+            balance_vat_rmb=balance_vat_sum,
+            usd_to_rmb_rate=usd_to_rmb,
+            total_vat_return_usd=round(total_vat_sum / usd_to_rmb, 2) if usd_to_rmb else 0.0,
+            received_vat_usd=round(received_vat_sum / usd_to_rmb, 2) if usd_to_rmb else 0.0,
+            balance_vat_usd=round(balance_vat_sum / usd_to_rmb, 2) if usd_to_rmb else 0.0,
+        )
+
+        # Apply stage filter for the table list
+        if stage and stage != "all":
+            final_items = [r for r in filtered_for_kpi if r.stage_key == stage]
+        else:
+            final_items = filtered_for_kpi
+
+        return VatReturnListResponse(
+            kpi=kpi,
+            available_financial_years=available_fys,
+            items=final_items,
+        )
+
+    def _build_vat_return_row(
+        self,
+        *,
+        record_key: str,
+        vat_record_id: uuid.UUID | None,
+        source_type: str,
+        source_id: uuid.UUID,
+        exp_no: str,
+        invoice_date: date | None,
+        financial_year: str,
+        consignment_code: str | None,
+        buyer_name: str | None,
+        organization_name: str | None,
+        source_status: str,
+        total_rmb_incl_vat: float,
+        total_vat_return_rmb: float,
+        usd_exchange_rate: float,
+        status_override: str | None,
+        receiving_date_text: str | None,
+        first_filing_date: date | None,
+        remarks: str | None,
+        breakdown_items: list[VatReturnBreakdownItem],
+        receipts: list[VatReturnReceiptResponse],
+    ) -> VatReturnRow:
+        received_rmb = round(sum(r.amount_rmb for r in receipts), 2)
+        ov_upper = (status_override or "").strip().upper()
+
+        if ov_upper == "NO VAT" or (total_vat_return_rmb <= 0.01 and received_rmb <= 0.01 and ov_upper != "PENDING"):
+            status_val: VatReturnStatusLiteral = "NO VAT"
+            stage_key = "no_vat"
+            balance_rmb = 0.0
+        elif received_rmb >= total_vat_return_rmb - 0.5 and total_vat_return_rmb > 0:
+            status_val = "RECEIVED"
+            stage_key = "received"
+            balance_rmb = max(0.0, round(total_vat_return_rmb - received_rmb, 2))
+        elif 0 < received_rmb < total_vat_return_rmb - 0.5:
+            status_val = "PARTIAL RECEIVED"
+            stage_key = "partial"
+            balance_rmb = round(total_vat_return_rmb - received_rmb, 2)
+        else:
+            if ov_upper == "RECEIVED" and received_rmb <= 0 and total_vat_return_rmb > 0:
+                status_val = "RECEIVED"
+                stage_key = "received"
+                received_rmb = total_vat_return_rmb
+                balance_rmb = 0.0
+            elif ov_upper == "PARTIAL RECEIVED":
+                status_val = "PARTIAL RECEIVED"
+                stage_key = "partial"
+                balance_rmb = max(0.0, round(total_vat_return_rmb - received_rmb, 2))
+            else:
+                status_val = "PENDING"
+                stage_key = "pending"
+                balance_rmb = max(0.0, round(total_vat_return_rmb - received_rmb, 2))
+
+        if receiving_date_text:
+            rec_date_display = receiving_date_text
+        elif receipts:
+            rec_date_display = ", ".join(
+                sorted({r.receipt_date.isoformat() for r in receipts})
+            )
+        else:
+            rec_date_display = None
+
+        partial_display = received_rmb if stage_key == "partial" else (
+            round(sum(r.amount_rmb for r in receipts[:-1]), 2) if len(receipts) > 1 else 0.0
+        )
+        rate = usd_exchange_rate if usd_exchange_rate > 0 else 7.20
+
+        return VatReturnRow(
+            record_key=record_key,
+            vat_record_id=vat_record_id,
+            source_type="sale_order" if source_type == "sale_order" else "manual",
+            source_id=source_id,
+            exp_no=exp_no,
+            invoice_date=invoice_date,
+            financial_year=financial_year,
+            consignment_code=consignment_code,
+            buyer_name=buyer_name,
+            organization_name=organization_name,
+            source_status=source_status,
+            total_rmb_incl_vat=total_rmb_incl_vat,
+            total_vat_return_rmb=total_vat_return_rmb,
+            received_vat_rmb=received_rmb,
+            balance_vat_rmb=balance_rmb,
+            usd_exchange_rate=rate,
+            total_vat_return_usd=round(total_vat_return_rmb / rate, 2),
+            received_vat_usd=round(received_rmb / rate, 2),
+            balance_vat_usd=round(balance_rmb / rate, 2),
+            status=status_val,
+            stage_key=stage_key,  # type: ignore[arg-type]
+            receiving_date_display=rec_date_display,
+            partial_amount_display=partial_display,
+            first_filing_date=first_filing_date,
+            remarks=remarks,
+            items_count=len(breakdown_items),
+            breakdown_items=breakdown_items,
+            receipts_count=len(receipts),
+            receipts=receipts,
+        )
+
+    async def _resolve_or_create_vat_record(
+        self,
+        record_key: str,
+        user_id: uuid.UUID | None = None,
+        user_name: str | None = None,
+    ) -> VatReturnRecord:
+        await self._ensure_vat_return_tables()
+        key = (record_key or "").strip()
+
+        if key.startswith("VR:"):
+            vr_id = uuid.UUID(key.split(":", 1)[1])
+            stmt = select(VatReturnRecord).where(
+                VatReturnRecord.id == vr_id,
+                VatReturnRecord.deleted_at.is_(None),
+            )
+            vr = (await self.session.execute(stmt)).scalar_one_or_none()
+            if not vr:
+                raise NotFoundException("VAT Return record not found.")
+            return vr
+
+        if key.startswith("SO:"):
+            so_id = uuid.UUID(key.split(":", 1)[1])
+            stmt = select(VatReturnRecord).where(
+                VatReturnRecord.source_type == "sale_order",
+                VatReturnRecord.source_id == so_id,
+                VatReturnRecord.deleted_at.is_(None),
+            )
+            vr = (await self.session.execute(stmt)).scalar_one_or_none()
+            if vr:
+                return vr
+
+            so_stmt = select(SaleOrder).where(SaleOrder.id == so_id)
+            so = (await self.session.execute(so_stmt)).scalar_one_or_none()
+            if not so:
+                raise NotFoundException("Sale Order not found for VAT Return.")
+
+            # Also check if a VatReturnRecord with matching exp_no already exists
+            exp_stmt = select(VatReturnRecord).where(
+                func.upper(VatReturnRecord.exp_no) == so.order_no.strip().upper(),
+                VatReturnRecord.deleted_at.is_(None),
+            )
+            existing_exp = (await self.session.execute(exp_stmt)).scalar_one_or_none()
+            if existing_exp:
+                existing_exp.source_type = "sale_order"
+                existing_exp.source_id = so.id
+                return existing_exp
+
+            vr = VatReturnRecord(
+                id=uuid.uuid4(),
+                source_type="sale_order",
+                source_id=so.id,
+                exp_no=so.order_no,
+                invoice_date=so.order_date,
+                financial_year=self._derive_financial_year(so.order_date, so.order_no),
+                consignment_code=so.consignment_code,
+                buyer_name=so.buyer_name,
+                organization_name=so.organization_name,
+                updated_by_id=user_id,
+                updated_by_name=user_name,
+            )
+            self.session.add(vr)
+            await self.session.flush()
+            return vr
+
+        # Fallback: look up by exp_no
+        stmt = select(VatReturnRecord).where(
+            func.upper(VatReturnRecord.exp_no) == key.upper(),
+            VatReturnRecord.deleted_at.is_(None),
+        )
+        vr = (await self.session.execute(stmt)).scalar_one_or_none()
+        if not vr:
+            raise NotFoundException(f"VAT Return record '{record_key}' not found.")
+        return vr
+
+    async def update_vat_return(
+        self,
+        *,
+        record_key: str,
+        payload: VatReturnUpdatePayload,
+        user_id: uuid.UUID | None = None,
+        user_name: str | None = None,
+    ) -> dict[str, Any]:
+        vr = await self._resolve_or_create_vat_record(
+            record_key=record_key, user_id=user_id, user_name=user_name
+        )
+        fields = payload.model_dump(exclude_unset=True)
+
+        if "exp_no" in fields and payload.exp_no:
+            vr.exp_no = payload.exp_no.strip()
+        if "invoice_date" in fields:
+            vr.invoice_date = payload.invoice_date
+        if "financial_year" in fields:
+            vr.financial_year = payload.financial_year
+        if "consignment_code" in fields:
+            vr.consignment_code = payload.consignment_code
+        if "buyer_name" in fields:
+            vr.buyer_name = payload.buyer_name
+        if "first_filing_date" in fields:
+            vr.first_filing_date = payload.first_filing_date
+        if "receiving_date_text" in fields:
+            vr.receiving_date_text = payload.receiving_date_text
+        if "status_override" in fields:
+            vr.status_override = payload.status_override
+        if "total_rmb_incl_vat_override" in fields:
+            vr.total_rmb_incl_vat_override = (
+                Decimal(str(payload.total_rmb_incl_vat_override))
+                if payload.total_rmb_incl_vat_override is not None
+                else None
+            )
+        if "total_vat_return_override" in fields:
+            vr.total_vat_return_override = (
+                Decimal(str(payload.total_vat_return_override))
+                if payload.total_vat_return_override is not None
+                else None
+            )
+        if "remarks" in fields:
+            vr.remarks = payload.remarks
+
+        if "breakdown_items" in fields and payload.breakdown_items is not None:
+            recalculated_items: list[dict[str, Any]] = []
+            for item in payload.breakdown_items:
+                qty = _to_float(item.quantity, 0.0)
+                rmb_unit = _to_float(item.rmb_price_with_vat, 0.0)
+                tot_rmb = _to_float(item.total_rmb_incl_vat, round(qty * rmb_unit, 2))
+                if tot_rmb <= 0 and qty > 0 and rmb_unit > 0:
+                    tot_rmb = round(qty * rmb_unit, 2)
+                p_vat = _to_float(item.purchase_vat_percent, 13.0)
+                r_vat = _to_float(item.refund_vat_percent, 13.0)
+                vat_ret = self._compute_item_vat_return(tot_rmb, p_vat, r_vat)
+                d = item.model_dump(mode="json")
+                d["total_rmb_incl_vat"] = tot_rmb
+                d["vat_to_be_returned"] = vat_ret
+                recalculated_items.append(d)
+            vr.items_override_json = json.dumps(recalculated_items)
+
+        vr.updated_by_id = user_id
+        vr.updated_by_name = user_name
+        await self.session.commit()
+        return {"id": str(vr.id), "exp_no": vr.exp_no, "updated": True}
+
+    async def create_manual_vat_return(
+        self,
+        *,
+        payload: VatReturnManualCreatePayload,
+        user_id: uuid.UUID | None = None,
+        user_name: str | None = None,
+    ) -> dict[str, Any]:
+        await self._ensure_vat_return_tables()
+        exp_clean = payload.exp_no.strip()
+        stmt = select(VatReturnRecord).where(
+            func.upper(VatReturnRecord.exp_no) == exp_clean.upper(),
+            VatReturnRecord.deleted_at.is_(None),
+        )
+        existing = (await self.session.execute(stmt)).scalar_one_or_none()
+        if existing:
+            raise ValidationException(f"EXP No. '{exp_clean}' already exists in VAT Return.")
+
+        fy = payload.financial_year or self._derive_financial_year(payload.invoice_date, exp_clean)
+        items_json = "[]"
+        if payload.breakdown_items:
+            items_json = json.dumps([i.model_dump(mode="json") for i in payload.breakdown_items])
+
+        vr = VatReturnRecord(
+            id=uuid.uuid4(),
+            source_type="manual",
+            source_id=uuid.uuid4(),
+            exp_no=exp_clean,
+            invoice_date=payload.invoice_date,
+            financial_year=fy,
+            consignment_code=payload.consignment_code,
+            buyer_name=payload.buyer_name,
+            organization_name="Yinglima",
+            first_filing_date=payload.first_filing_date,
+            receiving_date_text=payload.receiving_date_text,
+            status_override=payload.status_override,
+            total_rmb_incl_vat_override=(
+                Decimal(str(payload.total_rmb_incl_vat_override))
+                if payload.total_rmb_incl_vat_override is not None
+                else None
+            ),
+            total_vat_return_override=(
+                Decimal(str(payload.total_vat_return_override))
+                if payload.total_vat_return_override is not None
+                else None
+            ),
+            remarks=payload.remarks,
+            items_override_json=items_json,
+            updated_by_id=user_id,
+            updated_by_name=user_name,
+        )
+        self.session.add(vr)
+        await self.session.flush()
+
+        if payload.received_amount_rmb and payload.received_amount_rmb > 0:
+            rec = VatReturnReceipt(
+                id=uuid.uuid4(),
+                vat_record_id=vr.id,
+                exp_no=vr.exp_no,
+                receipt_date=payload.invoice_date or date.today(),
+                amount_rmb=Decimal(str(payload.received_amount_rmb)),
+                reference_no="Initial Receipt",
+                remarks=payload.receiving_date_text,
+                created_by_id=user_id,
+                created_by_name=user_name,
+            )
+            self.session.add(rec)
+
+        await self.session.commit()
+        return {"id": str(vr.id), "record_key": f"VR:{vr.id}", "exp_no": vr.exp_no}
+
+    async def add_vat_receipt(
+        self,
+        *,
+        record_key: str,
+        payload: VatReturnReceiptCreate,
+        user_id: uuid.UUID | None = None,
+        user_name: str | None = None,
+    ) -> VatReturnReceiptResponse:
+        vr = await self._resolve_or_create_vat_record(
+            record_key=record_key, user_id=user_id, user_name=user_name
+        )
+        # Clear status_override if it was manually forced so receipt math governs status
+        if vr.status_override in ("PENDING", "PARTIAL RECEIVED", "RECEIVED"):
+            vr.status_override = None
+
+        rec = VatReturnReceipt(
+            id=uuid.uuid4(),
+            vat_record_id=vr.id,
+            exp_no=vr.exp_no,
+            receipt_date=payload.receipt_date,
+            amount_rmb=Decimal(str(round(payload.amount_rmb, 2))),
+            reference_no=payload.reference_no,
+            remarks=payload.remarks,
+            created_by_id=user_id,
+            created_by_name=user_name,
+        )
+        self.session.add(rec)
+        await self.session.commit()
+        await self.session.refresh(rec)
+
+        return VatReturnReceiptResponse(
+            id=rec.id,
+            vat_record_id=rec.vat_record_id,
+            exp_no=rec.exp_no,
+            receipt_date=rec.receipt_date,
+            amount_rmb=_to_float(rec.amount_rmb),
+            reference_no=rec.reference_no,
+            remarks=rec.remarks,
+            created_by_id=rec.created_by_id,
+            created_by_name=rec.created_by_name,
+            created_at=rec.created_at,
+        )
+
+    async def delete_vat_receipt(self, *, receipt_id: uuid.UUID) -> dict[str, Any]:
+        await self._ensure_vat_return_tables()
+        stmt = select(VatReturnReceipt).where(
+            VatReturnReceipt.id == receipt_id,
+            VatReturnReceipt.deleted_at.is_(None),
+        )
+        rec = (await self.session.execute(stmt)).scalar_one_or_none()
+        if not rec:
+            raise NotFoundException("VAT receipt not found.")
+        rec.deleted_at = datetime.now(timezone.utc)
+        await self.session.commit()
+        return {"deleted": True, "id": str(receipt_id)}
+
+    @staticmethod
+    def _parse_flexible_date(val: Any) -> date | None:
+        if val is None:
+            return None
+        if isinstance(val, datetime):
+            return val.date()
+        if isinstance(val, date):
+            return val
+        s = str(val).strip()
+        if not s or s in ("—", "-", "None", "null"):
+            return None
+        # Handle multi-date strings like "2024.03.22/2024.06.27" -> take first date
+        first_part = re.split(r"[/,;]", s)[0].strip()
+        for fmt in ("%Y-%m-%d", "%Y.%m.%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%d.%m.%Y"):
+            try:
+                return datetime.strptime(first_part, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    async def import_vat_returns_file(
+        self,
+        *,
+        file_bytes: bytes,
+        filename: str,
+        user_id: uuid.UUID | None = None,
+        user_name: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Imports VAT Return records from either:
+        1. The user's multi-section Excel workbook (`RETURNED VAT LIST Yinglima 2023.xlsx`, containing
+           both Table 1 Summary rows `EXP2025 - 01` and Table 2 Product Breakdown rows `YL-EXP2025-01`), OR
+        2. A standard CSV / Excel file downloaded from Sample File / Export.
+        Upserts by normalized `EXP No.` (updates existing or creates new, zero duplicate rows).
+        """
+        await self._ensure_vat_return_tables()
+        fname = (filename or "").lower()
+
+        rows_matrix: list[list[Any]] = []
+        if fname.endswith(".csv"):
+            import csv
+
+            text_content = file_bytes.decode("utf-8-sig", errors="replace")
+            reader = csv.reader(io.StringIO(text_content))
+            rows_matrix = [list(r) for r in reader]
+        else:
+            from openpyxl import load_workbook
+
+            wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                for r in ws.iter_rows(values_only=True):
+                    rows_matrix.append(list(r))
+
+        summary_entries: dict[str, dict[str, Any]] = {}
+        breakdown_by_norm_exp: dict[str, list[dict[str, Any]]] = {}
+        current_fy = "2025-2026"
+
+        for raw_row in rows_matrix:
+            if not raw_row:
+                continue
+            # Detect FY header markers like "2023 - 2024" or "2025 - 2026"
+            first_cells_str = " ".join(str(c or "").strip() for c in raw_row[:4])
+            fy_match = re.search(r"(202[0-9])\s*[-–]\s*(202[0-9])", first_cells_str)
+            if fy_match and not re.search(r"EXP", first_cells_str, re.IGNORECASE):
+                current_fy = f"{fy_match.group(1)}-{fy_match.group(2)}"
+
+            # Scan row for Table 1 Summary entry (col 1 or col 0 starts with EXP...)
+            # In user's Excel: Col B (idx 1) = EXP NO., Col C (idx 2) = Invoice Date, Col D (idx 3) = TOTAL VAT RETURN AMOUNT,
+            # Col E (idx 4) = VAT Amount Received, Col F (idx 5) = Balance, Col G (idx 6) = STATUS,
+            # Col H (idx 7) = VAT RECEIVING DATE, Col I (idx 8) = Partial Amount, Col J (idx 9) = REMARKS, Col K (idx 10) = 1st Filing Date
+            for offset in (0, 1):
+                if len(raw_row) <= offset + 2:
+                    continue
+                cell_val = str(raw_row[offset] or "").strip()
+                if re.match(r"^EXP\s*20[0-9]{2}", cell_val, re.IGNORECASE):
+                    norm_k = self._normalize_exp_key(cell_val)
+                    inv_dt = self._parse_flexible_date(raw_row[offset + 1] if len(raw_row) > offset + 1 else None)
+                    tot_vat = _to_float(raw_row[offset + 2] if len(raw_row) > offset + 2 else None, 0.0)
+                    rec_vat = _to_float(raw_row[offset + 3] if len(raw_row) > offset + 3 else None, 0.0)
+                    status_str = str(raw_row[offset + 5] or "").strip().upper() if len(raw_row) > offset + 5 else ""
+                    rec_date_raw = raw_row[offset + 6] if len(raw_row) > offset + 6 else None
+                    rec_date_text = (
+                        rec_date_raw.strftime("%Y-%m-%d")
+                        if isinstance(rec_date_raw, (date, datetime))
+                        else (str(rec_date_raw).strip() if rec_date_raw is not None else None)
+                    )
+                    rem_str = str(raw_row[offset + 8] or "").strip() if len(raw_row) > offset + 8 and raw_row[offset + 8] is not None else None
+                    filing_dt = self._parse_flexible_date(raw_row[offset + 9] if len(raw_row) > offset + 9 else None)
+
+                    summary_entries[norm_k] = {
+                        "exp_no": cell_val,
+                        "invoice_date": inv_dt,
+                        "financial_year": self._derive_financial_year(inv_dt, cell_val) or current_fy,
+                        "total_vat_return": tot_vat,
+                        "received_vat": rec_vat,
+                        "status_override": status_str if status_str in ("RECEIVED", "PARTIAL RECEIVED", "PENDING", "NO VAT") else None,
+                        "receiving_date_text": rec_date_text if rec_date_text and rec_date_text != "None" else None,
+                        "remarks": rem_str if rem_str and rem_str != "None" else None,
+                        "first_filing_date": filing_dt,
+                    }
+                    break
+
+            # Scan row for Table 2 Breakdown entry (`YL-EXP...` either in col 0/1 or in col 13 right-side table)
+            for b_offset in (0, 1, 13):
+                if len(raw_row) <= b_offset + 5:
+                    continue
+                b_cell = str(raw_row[b_offset] or "").strip()
+                if re.match(r"^(YL[\s\-_]*)?EXP\s*20[0-9]{2}", b_cell, re.IGNORECASE):
+                    # Verify this is a breakdown row (has supplier/product in +3/+4)
+                    supp_val = str(raw_row[b_offset + 3] or "").strip() if len(raw_row) > b_offset + 3 else ""
+                    prod_val = str(raw_row[b_offset + 4] or "").strip() if len(raw_row) > b_offset + 4 else ""
+                    qty_val = _to_float(raw_row[b_offset + 5] if len(raw_row) > b_offset + 5 else None, -1.0)
+                    if (supp_val or prod_val) and qty_val >= 0 and supp_val.upper() != "SUPPLIER":
+                        norm_k = self._normalize_exp_key(b_cell)
+                        c_dt = self._parse_flexible_date(raw_row[b_offset + 1] if len(raw_row) > b_offset + 1 else None)
+                        c_no = str(raw_row[b_offset + 2] or "").strip() if len(raw_row) > b_offset + 2 and raw_row[b_offset + 2] is not None else None
+                        rmb_unit = _to_float(raw_row[b_offset + 6] if len(raw_row) > b_offset + 6 else None, 0.0)
+                        tot_rmb = _to_float(raw_row[b_offset + 7] if len(raw_row) > b_offset + 7 else None, round(qty_val * rmb_unit, 2))
+                        usd_p = _to_float(raw_row[b_offset + 8] if len(raw_row) > b_offset + 8 else None, 0.0)
+                        rem_usd = str(raw_row[b_offset + 9] or "").strip() if len(raw_row) > b_offset + 9 and raw_row[b_offset + 9] is not None else None
+                        vat_ret = _to_float(raw_row[b_offset + 10] if len(raw_row) > b_offset + 10 else None, 0.0)
+                        b_rem = str(raw_row[b_offset + 11] or "").strip() if len(raw_row) > b_offset + 11 and raw_row[b_offset + 11] is not None else None
+                        b_filing = self._parse_flexible_date(raw_row[b_offset + 12] if len(raw_row) > b_offset + 12 else None)
+
+                        # Infer refund_vat_percent from vat_ret / (tot_rmb / 1.13)
+                        inferred_refund_pct = 13.0
+                        if tot_rmb > 0:
+                            if vat_ret <= 0.01:
+                                inferred_refund_pct = 0.0
+                            else:
+                                ratio = (vat_ret / (tot_rmb / 1.13)) * 100.0
+                                if abs(ratio - 13.0) < 1.0:
+                                    inferred_refund_pct = 13.0
+                                elif abs(ratio - 9.0) < 1.0:
+                                    inferred_refund_pct = 9.0
+                                else:
+                                    inferred_refund_pct = round(ratio, 2)
+
+                        breakdown_by_norm_exp.setdefault(norm_k, []).append(
+                            {
+                                "item_key": f"imp-{len(breakdown_by_norm_exp.get(norm_k, [])) + 1}",
+                                "order_no": b_cell,
+                                "contract_date": c_dt.isoformat() if c_dt else None,
+                                "contract_no": c_no if c_no and c_no != "None" else None,
+                                "supplier_name": supp_val or "—",
+                                "product_name": prod_val or "—",
+                                "quantity": qty_val,
+                                "rmb_price_with_vat": rmb_unit,
+                                "total_rmb_incl_vat": tot_rmb,
+                                "usd_price": usd_p,
+                                "remarks_usd": rem_usd if rem_usd and rem_usd != "None" else None,
+                                "purchase_vat_percent": 13.0,
+                                "refund_vat_percent": inferred_refund_pct,
+                                "vat_to_be_returned": vat_ret,
+                                "remarks": b_rem if b_rem and b_rem != "None" else None,
+                                "first_filing_date": b_filing.isoformat() if b_filing else None,
+                            }
+                        )
+
+        all_norm_keys = set(summary_entries.keys()) | set(breakdown_by_norm_exp.keys())
+        if not all_norm_keys:
+            raise ValidationException(
+                "No valid EXP rows found in the uploaded file. Please ensure the sheet has 'EXP NO.' (e.g. EXP2025 - 01) or 'ORDER NO.' (e.g. YL-EXP2025-01) rows."
+            )
+
+        # Load existing VatReturnRecords and SaleOrders to upsert cleanly
+        existing_vrs = list(
+            (await self.session.execute(select(VatReturnRecord).where(VatReturnRecord.deleted_at.is_(None)))).scalars().all()
+        )
+        vr_by_norm = {self._normalize_exp_key(v.exp_no): v for v in existing_vrs}
+
+        existing_sos = list(
+            (await self.session.execute(select(SaleOrder).where(SaleOrder.deleted_at.is_(None)))).scalars().all()
+        )
+        so_by_norm = {self._normalize_exp_key(s.order_no): s for s in existing_sos}
+
+        created_count = 0
+        updated_count = 0
+
+        for norm_k in sorted(all_norm_keys):
+            s_info = summary_entries.get(norm_k, {})
+            b_items = breakdown_by_norm_exp.get(norm_k, [])
+
+            vr = vr_by_norm.get(norm_k)
+            matched_so = so_by_norm.get(norm_k)
+
+            exp_display = s_info.get("exp_no") or (
+                re.sub(r"^YL[\s\-_]*", "", b_items[0]["order_no"], flags=re.IGNORECASE)
+                if b_items
+                else norm_k
+            )
+            inv_dt = s_info.get("invoice_date")
+            if not inv_dt and b_items and b_items[0].get("contract_date"):
+                inv_dt = self._parse_flexible_date(b_items[0]["contract_date"])
+
+            filing_dt = s_info.get("first_filing_date")
+            if not filing_dt and b_items and b_items[0].get("first_filing_date"):
+                filing_dt = self._parse_flexible_date(b_items[0]["first_filing_date"])
+
+            tot_rmb_incl = round(sum(_to_float(i.get("total_rmb_incl_vat"), 0.0) for i in b_items), 2) if b_items else None
+            tot_vat_ret = (
+                s_info["total_vat_return"]
+                if "total_vat_return" in s_info and s_info["total_vat_return"] is not None
+                else (round(sum(_to_float(i.get("vat_to_be_returned"), 0.0) for i in b_items), 2) if b_items else 0.0)
+            )
+
+            if vr:
+                updated_count += 1
+                if inv_dt:
+                    vr.invoice_date = inv_dt
+                if s_info.get("financial_year"):
+                    vr.financial_year = s_info["financial_year"]
+                if filing_dt:
+                    vr.first_filing_date = filing_dt
+                if s_info.get("receiving_date_text"):
+                    vr.receiving_date_text = s_info["receiving_date_text"]
+                if s_info.get("status_override"):
+                    vr.status_override = s_info["status_override"]
+                if s_info.get("remarks"):
+                    vr.remarks = s_info["remarks"]
+                if tot_rmb_incl is not None:
+                    vr.total_rmb_incl_vat_override = Decimal(str(tot_rmb_incl))
+                if tot_vat_ret is not None:
+                    vr.total_vat_return_override = Decimal(str(tot_vat_ret))
+                if b_items:
+                    vr.items_override_json = json.dumps(b_items)
+                vr.updated_by_id = user_id
+                vr.updated_by_name = user_name
+            else:
+                created_count += 1
+                vr = VatReturnRecord(
+                    id=uuid.uuid4(),
+                    source_type="sale_order" if matched_so else "manual",
+                    source_id=matched_so.id if matched_so else uuid.uuid4(),
+                    exp_no=exp_display,
+                    invoice_date=inv_dt or (matched_so.order_date if matched_so else None),
+                    financial_year=s_info.get("financial_year") or self._derive_financial_year(inv_dt, exp_display),
+                    consignment_code=matched_so.consignment_code if matched_so else None,
+                    buyer_name=matched_so.buyer_name if matched_so else None,
+                    organization_name=matched_so.organization_name if matched_so else "Yinglima",
+                    first_filing_date=filing_dt,
+                    receiving_date_text=s_info.get("receiving_date_text"),
+                    status_override=s_info.get("status_override"),
+                    total_rmb_incl_vat_override=Decimal(str(tot_rmb_incl)) if tot_rmb_incl is not None else None,
+                    total_vat_return_override=Decimal(str(tot_vat_ret)) if tot_vat_ret is not None else None,
+                    remarks=s_info.get("remarks"),
+                    items_override_json=json.dumps(b_items) if b_items else "[]",
+                    updated_by_id=user_id,
+                    updated_by_name=user_name,
+                )
+                self.session.add(vr)
+                await self.session.flush()
+
+            # Sync initial receipt if `received_vat > 0` and no receipts exist yet for this record
+            rec_vat_amt = _to_float(s_info.get("received_vat"), 0.0)
+            if rec_vat_amt > 0:
+                existing_rec_cnt = (
+                    await self.session.execute(
+                        select(func.count(VatReturnReceipt.id)).where(
+                            VatReturnReceipt.vat_record_id == vr.id,
+                            VatReturnReceipt.deleted_at.is_(None),
+                        )
+                    )
+                ).scalar_one()
+                if existing_rec_cnt == 0:
+                    rec_dt = self._parse_flexible_date(s_info.get("receiving_date_text")) or inv_dt or date.today()
+                    self.session.add(
+                        VatReturnReceipt(
+                            id=uuid.uuid4(),
+                            vat_record_id=vr.id,
+                            exp_no=vr.exp_no,
+                            receipt_date=rec_dt,
+                            amount_rmb=Decimal(str(rec_vat_amt)),
+                            reference_no="Imported Receipt",
+                            remarks=s_info.get("receiving_date_text"),
+                            created_by_id=user_id,
+                            created_by_name=user_name,
+                        )
+                    )
+
+        await self.session.commit()
+        return {
+            "created": created_count,
+            "updated": updated_count,
+            "total_processed": created_count + updated_count,
+        }
+
+    def generate_vat_returns_sample_csv(self) -> bytes:
+        import csv
+
+        out = io.StringIO()
+        writer = csv.writer(out)
+        writer.writerow(
+            [
+                "EXP NO.",
+                "Invoice Date",
+                "TOTAL VAT RETURN AMOUNT",
+                "VAT Amount Received",
+                "Balance VAT Amount to be Received",
+                "STATUS",
+                "VAT RECEIVING DATE",
+                "Partial Amount Received",
+                "REMARKS",
+                "1st Filing Date",
+            ]
+        )
+        writer.writerow(
+            [
+                "EXP2026 - 01",
+                "2026-04-15",
+                "26890.09",
+                "26890.09",
+                "0.00",
+                "RECEIVED",
+                "2026-05-20",
+                "",
+                "Sample full VAT rebate received",
+                "2026-05-06",
+            ]
+        )
+        writer.writerow(
+            [
+                "EXP2026 - 02",
+                "2026-04-22",
+                "25150.56",
+                "9638.94",
+                "15511.62",
+                "PARTIAL RECEIVED",
+                "2026-06-10",
+                "9638.94",
+                "Balance under Tax Bureau review",
+                "2026-05-12",
+            ]
+        )
+        return out.getvalue().encode("utf-8-sig")
+
+    async def export_vat_returns_excel(
+        self,
+        *,
+        stage: VatReturnStageFilterLiteral = "all",
+        financial_year: str | None = None,
+        search: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> bytes:
+        data = await self.list_vat_returns(
+            stage=stage,
+            financial_year=financial_year,
+            search=search,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        wb = Workbook()
+        ws1: Any = wb.active or wb.create_sheet(title="VAT Return Summary")
+        ws1.title = "VAT Return Summary"
+
+        header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+        header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+        thin_side = Side(border_style="thin", color="CBD5E1")
+        cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+        headers1 = [
+            "EXP NO.",
+            "Financial Year",
+            "Consignment",
+            "Invoice Date",
+            "Total RMB Incl. VAT (¥)",
+            "TOTAL VAT RETURN AMOUNT (¥)",
+            "VAT Amount Received (¥)",
+            "Balance VAT to be Received (¥)",
+            "STATUS",
+            "VAT RECEIVING DATE",
+            "Partial Amount Received (¥)",
+            "REMARKS",
+            "1st Filing Date",
+        ]
+        ws1.append(headers1)
+        for col_idx in range(1, len(headers1) + 1):
+            cell = ws1.cell(row=1, column=col_idx)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for r in data.items:
+            ws1.append(
+                [
+                    r.exp_no,
+                    r.financial_year,
+                    r.consignment_code or "—",
+                    r.invoice_date.isoformat() if r.invoice_date else "—",
+                    r.total_rmb_incl_vat,
+                    r.total_vat_return_rmb,
+                    r.received_vat_rmb,
+                    r.balance_vat_rmb,
+                    r.status,
+                    r.receiving_date_display or "—",
+                    r.partial_amount_display or 0.0,
+                    r.remarks or "",
+                    r.first_filing_date.isoformat() if r.first_filing_date else "—",
+                ]
+            )
+
+        # Totals Row on Sheet 1
+        ws1.append(
+            [
+                "TOTAL",
+                "",
+                "",
+                "",
+                data.kpi.total_rmb_incl_vat,
+                data.kpi.total_vat_return_rmb,
+                data.kpi.received_vat_rmb,
+                data.kpi.balance_vat_rmb,
+                "",
+                "",
+                data.kpi.partial_received_vat_rmb,
+                "",
+                "",
+            ]
+        )
+        tot_row_idx = ws1.max_row
+        for c_i in range(1, len(headers1) + 1):
+            c = ws1.cell(row=tot_row_idx, column=c_i)
+            c.font = Font(name="Calibri", size=11, bold=True)
+            c.fill = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+
+        # Sheet 2: Product & Supplier Breakdown (Table 2)
+        ws2: Any = wb.create_sheet(title="Product VAT Breakdown")
+        headers2 = [
+            "ORDER NO.",
+            "Contract Date",
+            "Contract No.",
+            "SUPPLIER",
+            "PRODUCT",
+            "QUANTITY",
+            "RMB PRICE WITH VAT (¥)",
+            "Total RMB INCLUSIVE VAT (¥)",
+            "USD PRICE ($)",
+            "Purchase VAT %",
+            "Refund VAT %",
+            "VAT TO BE RETURNED (¥)",
+            "REMARKS",
+            "1st Filing Date",
+        ]
+        ws2.append(headers2)
+        for col_idx in range(1, len(headers2) + 1):
+            cell = ws2.cell(row=1, column=col_idx)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        for r in data.items:
+            for bi in r.breakdown_items:
+                ws2.append(
+                    [
+                        bi.order_no,
+                        bi.contract_date or (r.invoice_date.isoformat() if r.invoice_date else "—"),
+                        bi.contract_no or "—",
+                        bi.supplier_name,
+                        bi.product_name,
+                        bi.quantity,
+                        bi.rmb_price_with_vat,
+                        bi.total_rmb_incl_vat,
+                        bi.usd_price,
+                        bi.purchase_vat_percent,
+                        bi.refund_vat_percent,
+                        bi.vat_to_be_returned,
+                        bi.remarks or "",
+                        bi.first_filing_date or (r.first_filing_date.isoformat() if r.first_filing_date else "—"),
+                    ]
+                )
+
+        self._auto_fit_columns(ws1, cell_border)
+        self._auto_fit_columns(ws2, cell_border)
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        return buf.getvalue()
+
 

@@ -268,4 +268,127 @@ export interface ConsignmentChecklistUpdatePayload {
   forwarder_name?: string | null;
 }
 
+// =============================================================================
+// VAT Return (China Export Tax Rebate / 出口退税) Types
+// =============================================================================
+
+export type VatReturnStatus = "RECEIVED" | "PARTIAL RECEIVED" | "PENDING" | "NO VAT";
+export type VatReturnStageFilter = "all" | "pending" | "partial" | "received" | "no_vat";
+
+export interface VatReturnBreakdownItem {
+  item_key: string;
+  order_no: string;
+  contract_date?: string | null;
+  contract_no?: string | null;
+  supplier_name: string;
+  product_id?: string | null;
+  product_name: string;
+  product_code?: string | null;
+  hsn_code?: string | null;
+  quantity: number;
+  rmb_price_with_vat: number;
+  total_rmb_incl_vat: number;
+  usd_price: number;
+  remarks_usd?: string | null;
+  purchase_vat_percent: number;
+  refund_vat_percent: number;
+  vat_to_be_returned: number;
+  remarks?: string | null;
+  first_filing_date?: string | null;
+}
+
+export interface VatReturnReceiptItem {
+  id: string;
+  vat_record_id: string;
+  exp_no: string;
+  receipt_date: string;
+  amount_rmb: number;
+  reference_no?: string | null;
+  remarks?: string | null;
+  created_by_id?: string | null;
+  created_by_name?: string | null;
+  created_at?: string | null;
+}
+
+export interface VatReturnRow {
+  record_key: string;
+  vat_record_id?: string | null;
+  source_type: "sale_order" | "manual";
+  source_id: string;
+  exp_no: string;
+  invoice_date?: string | null;
+  financial_year: string;
+  consignment_code?: string | null;
+  buyer_name?: string | null;
+  organization_name?: string | null;
+  source_status: string;
+
+  total_rmb_incl_vat: number;
+  total_vat_return_rmb: number;
+  received_vat_rmb: number;
+  balance_vat_rmb: number;
+  usd_exchange_rate: number;
+  total_vat_return_usd: number;
+  received_vat_usd: number;
+  balance_vat_usd: number;
+
+  status: VatReturnStatus;
+  stage_key: "pending" | "partial" | "received" | "no_vat";
+  receiving_date_display?: string | null;
+  partial_amount_display: number;
+  first_filing_date?: string | null;
+  remarks?: string | null;
+
+  items_count: number;
+  breakdown_items: VatReturnBreakdownItem[];
+  receipts_count: number;
+  receipts: VatReturnReceiptItem[];
+}
+
+export interface VatReturnKpiSummary {
+  total_records: number;
+  pending_records: number;
+  partial_records: number;
+  received_records: number;
+  no_vat_records: number;
+  total_rmb_incl_vat: number;
+  total_vat_return_rmb: number;
+  received_vat_rmb: number;
+  partial_received_vat_rmb: number;
+  balance_vat_rmb: number;
+  usd_to_rmb_rate: number;
+  total_vat_return_usd: number;
+  received_vat_usd: number;
+  balance_vat_usd: number;
+}
+
+export interface VatReturnListResponse {
+  kpi: VatReturnKpiSummary;
+  available_financial_years: string[];
+  items: VatReturnRow[];
+}
+
+export interface VatReturnReceiptCreatePayload {
+  receipt_date: string;
+  amount_rmb: number;
+  reference_no?: string | null;
+  remarks?: string | null;
+}
+
+export interface VatReturnUpdatePayload {
+  exp_no?: string | null;
+  invoice_date?: string | null;
+  financial_year?: string | null;
+  consignment_code?: string | null;
+  buyer_name?: string | null;
+  first_filing_date?: string | null;
+  receiving_date_text?: string | null;
+  status_override?: string | null;
+  total_rmb_incl_vat_override?: number | null;
+  total_vat_return_override?: number | null;
+  remarks?: string | null;
+  breakdown_items?: VatReturnBreakdownItem[] | null;
+}
+
+
 

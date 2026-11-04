@@ -4803,6 +4803,8 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
    - Update `Payment Terms`, `Due Date`, `BL Details`, `BL Status` (`Telex`), `Agent Name` (`Agnes`), `Local Charge (RMB)`, `Freight Charge (RMB)`, and `Bill Status` (`Paid` / `Pending`) -> verify the row and KPI summary update immediately.
 5. **Multi-Sheet Excel Planner Export (`Export`)**:
    - Click `Export` in the top-right header -> verify a 4-sheet `.xlsx` workbook (`Financial Summary`, `Local Purchase (Suppliers)`, `Sales & Agent Schedule`, `Payment Transactions`) downloads cleanly.
+6. **6-KPI Card Active Border & Stage Filter Sync (`handleKpiSelect`)**:
+   - Click each of the 6 KPI summary cards (`LOCAL PURCHASE — ALL`, `LOCAL PURCHASE — PAID`, `LOCAL PURCHASE — BALANCE`, `SALES PROCESS — ALL`, `SALES PROCESS — RECEIVED`, `SALES PROCESS — BALANCE`) -> verify the blue active border (`1.5px solid #3b82f6`) moves to the exact KPI card clicked and the table below switches to the matching section and stage (`All`, `Cleared`, `Pending`).
 
 
 ### Test Case LP-BILL-01: Local Purchase Bill PDF Upload & Edit Persistence in Supabase Storage
@@ -4825,3 +4827,22 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
    - **Cargo Status — Shipment Checklist Details (Editable)**: Click any of the 12 checklist cards (e.g., `Draft Approved BL Received`, `Listed with Forwarder / Booking Confirmed`) -> verify the badge flips from red **`No`** to green **`Yes`** in **0ms** and persists across page reloads. Enter a `Cargo Remark` or `ETD Origin` / `ETA Destination Port` date -> verify it saves cleanly.
    - **Product Summary**: Verify all product line items, quantities, suppliers/source documents, and consignment/batch codes are listed at the bottom.
 
+
+
+### Test Case VAT-RET-01: China Export VAT Return Module (`/finance/vat-return`)
+1. Navigate to **FINANCE -> VAT Return** (`/finance/vat-return`) in the left sidebar.
+2. **Live Sales Process Sync & Formula Verification**:
+   - Verify all Confirmed / Dispatched / LR **Sales Process** orders (`EXP` orders) appear automatically in the summary ledger with `Total RMB Incl. VAT` and `Total VAT Return (¥)` calculated as `(Total RMB Incl. VAT / 1.13) * 0.13` (or the product's configured refund VAT %).
+3. **Interactive KPI Cards & Financial Year Tabs**:
+   - Click each of the 4 KPI cards (`TOTAL VAT RETURN — ALL`, `VAT AMOUNT RECEIVED`, `PARTIAL VAT RECEIVED`, `BALANCE VAT TO BE RECEIVED`) -> verify the active blue border (`1.5px solid #3b82f6`) moves to the clicked card and filters the table to the matching stage (`All`, `Received`, `Partial Received`, `Pending`).
+   - Click the Financial Year pills (`All Years`, `FY 2026-2027`, `FY 2025-2026`, `FY 2024-2025`, `FY 2023-2024`) -> verify the table and KPI totals filter immediately.
+4. **Per-Shipment Product & Supplier Breakdown Modal (Table 2)**:
+   - Click any **`EXP No.`** link in the first column -> verify the **Product & Supplier VAT Breakdown** modal opens showing `ORDER NO.` (`YL-EXP...`), `Contract Date`, `Contract No.`, `Supplier`, `Product`, `Qty`, `RMB Price w/ VAT`, `Total RMB Incl. VAT`, `USD Price`, `Rebate %` (`13%`, `9%`, `6%`, `0%`), and `VAT To Be Returned (¥)`.
+   - Change an item's `Rebate %` from `13%` to `9%` or `0% (No VAT)` and click **Save Breakdown & Sync VAT Total** -> verify the item's `VAT To Be Returned (¥)` and the shipment's `Total VAT Return (¥)` update immediately.
+5. **Recording Full & Partial VAT Receipts (`⋮ -> Record VAT Receipt`)**:
+   - Click `⋮ -> Record VAT Receipt (Full / Partial)` on a `PENDING` shipment, enter a partial RMB amount, and save -> verify status becomes `PARTIAL RECEIVED` (amber), `VAT Received (¥)` and `Partial Amount` update, and `Balance VAT (¥)` decreases.
+   - Record the remaining balance (or delete the receipt via `⋮ -> Receipt History`) -> verify status transitions to `RECEIVED` (green) or reverts to `PENDING` (red).
+6. **Excel / CSV Import & 2-Sheet Export (`Imp / Exp ▾`)**:
+   - Click **`Imp / Exp ▾ -> Sample File (.csv)`** -> verify `vat_return_sample.csv` downloads.
+   - Click **`Imp / Exp ▾ -> Import Excel / CSV`** and select the `RETURNED VAT LIST Yinglima` `.xlsx` file (or a CSV file) -> verify both Table 1 summary rows (`EXP2023 - 01` ... `EXP2026 - 97`) and Table 2 product breakdown rows (`YL-EXP...`) import cleanly without duplicates.
+   - Click **`Imp / Exp ▾ -> Export 2-Sheet Excel (.xlsx)`** -> verify a 2-sheet workbook (`VAT Return Summary` + `Product VAT Breakdown`) downloads cleanly.

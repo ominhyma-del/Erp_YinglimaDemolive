@@ -62,6 +62,7 @@ const pageLoaders = {
   SaleProcessForm: () => import("@/pages/sales/SaleProcessForm").then((m) => ({ default: m.SaleProcessFormPage })),
   FinancialReport: () => import("@/pages/finance/FinancialReport").then((m) => ({ default: m.FinancialReportPage })),
   ConsignmentOverview: () => import("@/pages/finance/ConsignmentOverview").then((m) => ({ default: m.ConsignmentOverviewPage })),
+  VatReturn: () => import("@/pages/finance/VatReturn").then((m) => ({ default: m.VatReturnPage })),
   Trash: () => import("@/pages/Trash").then((m) => ({ default: m.TrashPage })),
   PublicSupplierQuote: () => import("@/pages/PublicSupplierQuotePage"),
   NotificationSettings: () => import("@/pages/NotificationSettings").then((m) => ({ default: m.NotificationSettings })),
@@ -102,6 +103,7 @@ const SaleProcessListPage = lazy(pageLoaders.SaleProcessList);
 const SaleProcessFormPage = lazy(pageLoaders.SaleProcessForm);
 const FinancialReportPage = lazy(pageLoaders.FinancialReport);
 const ConsignmentOverviewPage = lazy(pageLoaders.ConsignmentOverview);
+const VatReturnPage = lazy(pageLoaders.VatReturn);
 const TrashPage = lazy(pageLoaders.Trash);
 const PublicSupplierQuotePage = lazy(pageLoaders.PublicSupplierQuote);
 
@@ -231,6 +233,8 @@ export function App() {
             {/* Finance */}
             <Route path="/finance/report" element={<FinancialReportPage />} />
             <Route path="/finance/consignment-overview" element={<ConsignmentOverviewPage />} />
+            <Route path="/finance/vat-return" element={<VatReturnPage />} />
+            <Route path="/vat-return" element={<Navigate to="/finance/vat-return" replace />} />
             <Route path="/consignment-overview" element={<Navigate to="/finance/consignment-overview" replace />} />
             <Route path="/finance" element={<Navigate to="/finance/report" replace />} />
             <Route path="/finance-planning-report" element={<Navigate to="/finance/report" replace />} />
