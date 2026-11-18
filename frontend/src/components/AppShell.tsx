@@ -19,6 +19,8 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { API_BASE, apiGet, apiPost } from "@/lib/api";
 import { Auth, initials, roleLabel } from "@/lib/auth";
 import { useAuth } from "@/lib/hooks";
+import { liveClient } from "@/lib/live/liveClient";
+import { InlineListSkeleton } from "@/components/Skeleton";
 import {
   NAV_ITEMS_BY_KEY,
   NAV_SECTIONS,
@@ -275,8 +277,8 @@ function NotificationBell() {
           {/* List */}
           <div style={{ maxHeight: "360px", overflowY: "auto" }}>
             {loading && notifications.length === 0 ? (
-              <div style={{ padding: "28px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
-                Loading alerts...
+              <div style={{ padding: "12px 16px" }}>
+                <InlineListSkeleton count={3} showAvatar compact />
               </div>
             ) : notifications.length === 0 ? (
               <div style={{ padding: "36px 20px", textAlign: "center", color: "#64748b", fontSize: "13px" }}>
@@ -1276,6 +1278,34 @@ export function AppShell({ activeKey, children, pageClassName }: AppShellProps) 
       .catch(() => {
         /* profile refresh fallback */
       });
+  }, [loggedIn]);
+
+  // Live dynamic permission sync: when an admin updates this user's role or
+  // overrides, refresh /auth/profile immediately without requiring a page reload.
+  useEffect(() => {
+    const profileId = Auth.getProfile()?.id;
+    if (!loggedIn || !profileId) return;
+    const userChannel = `user:${profileId}`;
+    liveClient.subscribe(userChannel);
+    liveClient.subscribe("notifications");
+    const unsub = liveClient.onEvent((event) => {
+      if (event.event_type !== "rbac.permissions_updated") return;
+      const targetUserId = event.changes?.user_id as string | undefined;
+      if (targetUserId && targetUserId !== profileId) return;
+      apiGet<Profile>("/auth/profile")
+        .then((res) => {
+          if (res && res.data) {
+            Auth.updateProfile(res.data);
+            Auth.markProfileSynced();
+          }
+        })
+        .catch(() => undefined);
+    });
+    return () => {
+      unsub();
+      liveClient.unsubscribe(userChannel);
+      liveClient.unsubscribe("notifications");
+    };
   }, [loggedIn]);
 
   useEffect(() => subscribeBrandName(setBrandName), []);

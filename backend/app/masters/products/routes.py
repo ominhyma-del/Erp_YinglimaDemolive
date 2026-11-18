@@ -38,7 +38,7 @@ from app.masters.products.sync_inhyma import (
     sync_product_to_inhyma,
     was_product_synced_to_inhyma,
 )
-from app.rbac.dependencies import require_permission
+from app.rbac.dependencies import require_any_permission, require_permission
 
 router = APIRouter(prefix="/masters/products", tags=["Masters - Products"])
 logger = get_logger(__name__)
@@ -149,7 +149,7 @@ async def list_products(
     request: Request,
     query: ListQueryParams = Depends(get_list_query_params),
     service: ProductService = Depends(get_product_service),
-    _current_user: CurrentUser = Depends(require_permission("product.view")),
+    _current_user: CurrentUser = Depends(require_any_permission("product.view", "supplier.view", "supplier.create", "supplier.update", "buyer.view", "buyer.create", "buyer.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "sale_process.view", "sale_process.create", "sale_process.update", "planning.view", "product_price.view", "productgallery.view", "stock_movement.view", "consignment_overview.view", "vat_return.view")),
     light_list: bool | None = None,
 ) -> dict:
     """List products, with search/sort/filter/pagination.
@@ -246,7 +246,7 @@ async def get_product_names_lookup(
     search: str | None = None,
     limit: int = 25,
     service: ProductService = Depends(get_product_service),
-    _current_user: CurrentUser = Depends(require_permission("product.view")),
+    _current_user: CurrentUser = Depends(require_any_permission("product.view", "supplier.view", "supplier.create", "supplier.update", "buyer.view", "buyer.create", "buyer.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "sale_process.view", "sale_process.create", "sale_process.update", "planning.view", "product_price.view", "productgallery.view", "stock_movement.view", "consignment_overview.view", "vat_return.view")),
 ) -> dict:
     """Return lightweight product name suggestions matching search term anywhere in the name."""
     names = await service.search_product_names(search=search, limit=min(limit, 50))

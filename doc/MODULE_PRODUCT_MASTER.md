@@ -3,7 +3,7 @@
 **System:** Yinglima_ERP  
 **Module:** Products Master, Prices & Gallery (`/masters/products`, `/inventory/product-prices`, `/product-gallery`)  
 **Status:** Active / Production Ready  
-**Last Updated:** 2026-10-19  
+**Last Updated:** 2026-11-17  
 
 ---
 
@@ -292,3 +292,10 @@ Inhyma and Yinglima maintain independent relational UUID namespaces. Products ar
 * **Product Gallery Top-Right Funnel Filter Toggle (`ProductGallery.tsx`):**
   * Added the standardized `.btn-header-filter` funnel icon toggle button in the top-right `.page-header-actions` of **Product Gallery** (`/product-gallery`), matching **Product Master**, **Product Prices**, **Suppliers**, and **Buyers**.
   * The **Filter Options** card (Category, Sub Category, Brand, Search, and `Reset Filters`) is now collapsed by default (`filterOpen = false`) and toggles open/closed when clicking the top-right funnel button, while a quick search input (`🔍 Search code, name, supplier...`) remains accessible on the right side of the media tabs bar.
+
+---
+
+## 17. Product Name Column Readability & 2-Line Wrapping (`Products.tsx`)
+* **Wider Column + 2-Line Clamp (`Product Name (Tally)`):**
+  * Widened the `Product Name (Tally)` cell container from `240px–360px` to `minWidth: 280px` / `maxWidth: 420px` (`460px` when the `⚠️ LICENSE NEEDED` badge is displayed) so normal and medium-length product names fit on a single line without unnecessary truncation.
+  * Enabled 2-line wrapping (`whiteSpace: "normal"`, `WebkitLineClamp: 2`, `lineHeight: 1.35`, `wordBreak: "break-word"`) so long product names wrap cleanly onto a second line instead of cutting off mid-word with `...`, while keeping `title={name}` as a hover tooltip for ultra-long names.

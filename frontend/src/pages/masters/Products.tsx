@@ -22,6 +22,7 @@ import { SideDrawer, DetailFieldGrid } from "@/components/SideDrawer";
 import { ProductTradeHistoryDrawer } from "@/components/ProductTradeHistoryDrawer";
 import { ItemPopoverCell } from "@/components/ItemPopoverCell";
 import { SearchableFilterDropdown } from "@/components/SearchableDropdown";
+import { DetailSkeleton, InlineTextSkeleton } from "@/components/Skeleton";
 import {
   MultiSelectField,
   SelectField,
@@ -593,7 +594,7 @@ function LazyProductImages({ productId, set }: { productId: string; set: (key: s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
   return (
-    <div style={{ fontSize: "12.5px", color: "var(--color-text-secondary)" }}>Loading photos…</div>
+    <InlineTextSkeleton width={110} height={14} />
   );
 }
 
@@ -901,7 +902,16 @@ export function ProductsPage() {
             const name = p.product_name_tally || p.product_name || "—";
             const hasLicense = Boolean(p.license_certificate_required && p.license_certificate_required.trim());
             return (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", maxWidth: "360px", minWidth: "240px", flexWrap: "nowrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  minWidth: "280px",
+                  maxWidth: hasLicense ? "460px" : "420px",
+                  flexWrap: "nowrap",
+                }}
+              >
                 <a
                   href="#"
                   className="cell-primary"
@@ -909,10 +919,16 @@ export function ProductsPage() {
                   style={{
                     color: hasLicense ? "#dc2626" : "var(--color-primary)",
                     fontWeight: 700,
-                    maxWidth: hasLicense ? "220px" : "320px",
+                    lineHeight: 1.35,
+                    whiteSpace: "normal",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    wordBreak: "break-word",
+                    flex: 1,
+                    minWidth: 0,
                   }}
                   onClick={(e) => {
                     e.preventDefault();
@@ -1878,9 +1894,7 @@ export function ProductsPage() {
                 {p.status === "active" ? "Active" : "Inactive"}
               </span>
               {drawerLoading && (
-                <span style={{ fontSize: "11.5px", color: "#0284c7", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                  <span>⏳</span> Loading full details...
-                </span>
+                <InlineTextSkeleton width={110} height={12} />
               )}
             </div>
           ) : ""
@@ -1895,9 +1909,7 @@ export function ProductsPage() {
         }}
       >
         {drawerLoading || !p ? (
-          <div className="muted" style={{ textAlign: "center", padding: "40px" }}>
-            Loading product details...
-          </div>
+          <DetailSkeleton stripCount={4} rows={6} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px", paddingBottom: "24px" }}>
             {/* CARD 1: Hero Identity & Photo */}

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
 import { Can } from "@/components/ui";
+import { TableSkeletonRows } from "@/components/Skeleton";
 import { apiDelete, apiGet, apiPatch, downloadExport, errorMessage } from "@/lib/api";
 import { useLookup } from "@/lib/lookups";
 import { useToast } from "@/lib/toast";
@@ -1074,11 +1075,7 @@ export function SaleProcessListPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr>
-                    <td colSpan={10} style={{ textAlign: "center", padding: "40px", color: "#64748b" }}>
-                      Loading sale orders...
-                    </td>
-                  </tr>
+                  <TableSkeletonRows colCount={10} rowCount={8} cellPadding="10px 12px" />
                 ) : orders.length === 0 ? (
                   <tr>
                     <td colSpan={10} style={{ textAlign: "center", padding: "50px", color: "#94a3b8" }}>
@@ -1351,7 +1348,7 @@ export function SaleProcessListPage() {
                 </button>
 
                 {activeOrder.status === "pending" && (
-                  <Can permission="sale_process.update">
+                  <Can permission="sale_process.approve">
                     <button
                       type="button"
                       onClick={() => handleUpdateStatus(activeOrder.id, "confirmed")}
@@ -1379,7 +1376,7 @@ export function SaleProcessListPage() {
                 )}
 
                 {(activeOrder.status === "confirmed" || activeOrder.status === "sales_confirmed") && (
-                  <Can permission="sale_process.update">
+                  <Can permission="sale_process.approve">
                     <button
                       type="button"
                       onClick={() => handleUpdateStatus(activeOrder.id, "pending")}
@@ -1407,7 +1404,7 @@ export function SaleProcessListPage() {
                 )}
 
                 {(activeOrder.status === "confirmed" || activeOrder.status === "sales_confirmed" || activeOrder.status === "admin_approved") ? (
-                  <Can permission="sale_process.update">
+                  <Can permission="sale_process.approve">
                     <button
                       type="button"
                       onClick={() => {
@@ -1453,7 +1450,7 @@ export function SaleProcessListPage() {
                 ) : null}
 
                 {activeOrder.status === "dispatched" && (
-                  <Can permission="sale_process.update">
+                  <Can permission="sale_process.approve">
                     <button
                       type="button"
                       onClick={() => openStatusModal("lr", activeOrder)}
@@ -1481,7 +1478,7 @@ export function SaleProcessListPage() {
                 )}
 
                 {(activeOrder.status === "pending" || activeOrder.status === "confirmed" || activeOrder.status === "sales_confirmed") && (
-                  <Can permission="sale_process.update">
+                  <Can permission="sale_process.approve">
                     <button
                       type="button"
                       onClick={() => openStatusModal("cancel", activeOrder)}

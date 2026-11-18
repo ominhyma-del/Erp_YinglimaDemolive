@@ -20,6 +20,7 @@ import { useLookup } from "@/lib/lookups";
 import { useToast } from "@/lib/toast";
 import { SearchableDropdown } from "@/components/SearchableDropdown";
 import { ProductTradeHistoryDrawer } from "@/components/ProductTradeHistoryDrawer";
+import { DetailSkeleton, InlineTextSkeleton } from "@/components/Skeleton";
 import type {
   ConsignmentProductItem,
   LocalPurchaseDetail,
@@ -36,6 +37,7 @@ let cachedConsignmentsLookup: SheetConsignmentLookup[] | null = null;
 export function LocalPurchaseFormPage() {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
+  const canViewPriceHistory = hasPermission("local_purchase.price_history") || hasPermission("product_price.view");
   const { id } = useParams<{ id: string }>();
   const isEdit = Boolean(id);
   const toast = useToast();
@@ -1490,9 +1492,8 @@ export function LocalPurchaseFormPage() {
   if (initialLoading) {
     return (
       <AppShell activeKey="local-purchases">
-        <main className="page" style={{ textAlign: "center", padding: "80px 20px", color: "#64748b" }}>
-          <div style={{ fontSize: "24px", marginBottom: "12px" }}>⏳</div>
-          <div style={{ fontSize: "15px", fontWeight: 600 }}>Loading purchase details...</div>
+        <main className="page" style={{ width: "100%", padding: "24px", boxSizing: "border-box" }}>
+          <DetailSkeleton stripCount={4} rows={6} />
           <ProductTradeHistoryDrawer
           productId={historyProduct?.id || null}
           productName={historyProduct?.name}
@@ -1715,7 +1716,11 @@ export function LocalPurchaseFormPage() {
               <div style={{ position: "relative", zIndex: 50 }}>
                 <label style={{ fontSize: "12.5px", fontWeight: 700, color: "#334155", marginBottom: "6px", display: "block" }}>
                   Consignment <span style={{ color: "#ef4444" }}>*</span>
-                  {loadingConsignmentItems && <span style={{ fontSize: "11px", color: "#0284c7", marginLeft: "6px" }}>⏳ Loading items...</span>}
+                  {loadingConsignmentItems && (
+                    <span style={{ marginLeft: "6px", verticalAlign: "middle", display: "inline-flex" }}>
+                      <InlineTextSkeleton width={68} height={11} />
+                    </span>
+                  )}
                 </label>
                 <select
                   value={planningColumnId}
@@ -2720,9 +2725,7 @@ export function LocalPurchaseFormPage() {
                 <span>
                 </span>
                 {planningLoading && (
-                  <span style={{ fontSize: "12px", color: "#0284c7", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    ⏳ Syncing Shipment Planning...
-                  </span>
+                  <InlineTextSkeleton width={130} height={14} />
                 )}
               </div>
 
@@ -2950,53 +2953,61 @@ export function LocalPurchaseFormPage() {
                           {item.product_id ? (
                             <div>
                               <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setHistoryProduct({
-                                      id: item.product_id!,
-                                      name: item.product_name,
-                                      code: item.product_code,
-                                    })
-                                  }
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    padding: 0,
-                                    fontWeight: 700,
-                                    color: "#2563eb",
-                                    fontSize: "13px",
-                                    cursor: "pointer",
-                                    textAlign: "left",
-                                    textDecoration: "underline",
-                                  }}
-                                  title="Click to view Local Purchase history & past purchase prices for this product"
-                                >
-                                  {item.product_name}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setHistoryProduct({
-                                      id: item.product_id!,
-                                      name: item.product_name,
-                                      code: item.product_code,
-                                    })
-                                  }
-                                  style={{
-                                    padding: "1px 6px",
-                                    fontSize: "10.5px",
-                                    fontWeight: 700,
-                                    background: "#eff6ff",
-                                    color: "#1d4ed8",
-                                    borderRadius: "4px",
-                                    border: "1px solid #bfdbfe",
-                                    cursor: "pointer",
-                                  }}
-                                  title="View purchase count & historical rates"
-                                >
-                                  📜 History
-                                </button>
+                                {canViewPriceHistory ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setHistoryProduct({
+                                          id: item.product_id!,
+                                          name: item.product_name,
+                                          code: item.product_code,
+                                        })
+                                      }
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        padding: 0,
+                                        fontWeight: 700,
+                                        color: "#2563eb",
+                                        fontSize: "13px",
+                                        cursor: "pointer",
+                                        textAlign: "left",
+                                        textDecoration: "underline",
+                                      }}
+                                      title="Click to view Local Purchase history & past purchase prices for this product"
+                                    >
+                                      {item.product_name}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setHistoryProduct({
+                                          id: item.product_id!,
+                                          name: item.product_name,
+                                          code: item.product_code,
+                                        })
+                                      }
+                                      style={{
+                                        padding: "1px 6px",
+                                        fontSize: "10.5px",
+                                        fontWeight: 700,
+                                        background: "#eff6ff",
+                                        color: "#1d4ed8",
+                                        borderRadius: "4px",
+                                        border: "1px solid #bfdbfe",
+                                        cursor: "pointer",
+                                      }}
+                                      title="View purchase count & historical rates"
+                                    >
+                                      📜 History
+                                    </button>
+                                  </>
+                                ) : (
+                                  <span style={{ fontWeight: 700, color: "#0f172a", fontSize: "13px" }}>
+                                    {item.product_name}
+                                  </span>
+                                )}
                               </div>
                               <div style={{ display: "none" }}>
                                 {item.product_name}
