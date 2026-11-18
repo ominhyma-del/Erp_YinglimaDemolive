@@ -1293,6 +1293,7 @@ function ItemsView({
   onError: (err: unknown) => void;
 }) {
   const confirm = useConfirm();
+  const { hasPermission } = useAuth();
   const initialDetail = inquiriesDetailCache.get(inquiryId);
   const [inquiry, setInquiry] = useState<Inquiry | null>(() => initialDetail || null);
   const [loading, setLoading] = useState(() => !initialDetail);
