@@ -100,7 +100,7 @@ export function ActionDropdown({
           setOpen((v) => !v);
         }}
       >
-        {label || (iconOnly ? "⋮" : "⋮ Actions ▾")}
+        {label || (iconOnly ? "⋮" : "⋮")}
       </button>
       {open &&
         createPortal(
@@ -113,7 +113,7 @@ export function ActionDropdown({
               left: position?.left ?? -9999,
               width: "max-content",
               minWidth: "170px",
-              maxWidth: "220px",
+              maxWidth: "320px",
               zIndex: 99999,
               visibility: position ? "visible" : "hidden",
             }}

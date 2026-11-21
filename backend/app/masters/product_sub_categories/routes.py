@@ -131,7 +131,7 @@ async def list_sub_categories(
     request: Request,
     query: ListQueryParams = Depends(get_list_query_params),
     service: ProductSubCategoryService = Depends(get_product_sub_category_service),
-    _current_user: CurrentUser = Depends(require_any_permission("subcategory.view", "product.view", "product.create", "product.update", "productgallery.view", "product_price.view", "supplier.view", "supplier.create", "supplier.update", "buyer.view", "buyer.create", "buyer.update", "inquiry.view", "inquiry.create", "inquiry.update")),
+    _current_user: CurrentUser = Depends(require_any_permission("subcategory.view", "product.view", "product.create", "product.update", "productgallery.products.view", "productgallery.suppliers.view", "product_price.view", "supplier.view", "supplier.create", "supplier.update", "buyer.view", "buyer.create", "buyer.update", "inquiry.view", "inquiry.create", "inquiry.update")),
 ) -> dict:
     """List product sub-categories, with search/sort/filter/pagination."""
     sub_categories, total = await service.list_paginated(query)

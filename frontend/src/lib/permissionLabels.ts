@@ -43,6 +43,7 @@ export const MODULE_NAMES: Record<string, string> = {
   stock_movement: "Stock Movement",
   notification_settings: "Notification Rules",
   warehouse: "Warehouses",
+  payment_mode: "Payment Modes / Bank Accounts",
   finance_report: "Financial Report",
   consignment_overview: "Consignment Overview",
   vat_return: "VAT Return",
@@ -76,6 +77,7 @@ export const MODULE_ICONS: Record<string, string> = {
   suppliertype: "🏭",
   buyertype: "🏢",
   organizationlist: "🏛️",
+  payment_mode: "🏦",
   warehouse: "🏭",
   finance_report: "💰",
   consignment_overview: "📋",
@@ -141,6 +143,7 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       "suppliertype",
       "buyertype",
       "organizationlist",
+      "payment_mode",
       "warehouse",
       "notification_settings",
       "organization",
@@ -231,9 +234,16 @@ const FULL_CODE_LABELS: Record<string, string> = {
   "local_purchase.export": "Export / Print",
   "local_purchase.inward": "Inward to Warehouse",
   "local_purchase.price_history": "View Price History",
+  "product_price.trade_history": "View Trade History",
+  "productgallery.products.view": "View Product Photos",
+  "productgallery.suppliers.view": "View Supplier Photos",
+  "productgallery.quotations.view": "View Quotation Docs",
+  "productgallery.delete": "Delete Photos / Media",
+  "stock_movement.inward.view": "View Inward Register",
+  "stock_movement.outward.view": "View Outward Register",
+  "stock_movement.ledger.view": "View Current Stock Ledger",
   "sale_process.approve": "Update Status / Workflow",
   "sale_process.export": "Export Excel & CI/Packing Docs",
-  "stock_movement.cancel": "Cancel / Reverse Movement",
   "notification_settings.manage": "Manage Notification Rules",
   // Financial Report
   "finance_report.view": "View Financial Report & History",
@@ -280,7 +290,13 @@ export function friendlyActionIcon(code: string): string {
   if (code === "consignment_overview.cargo_status.edit") return "✅";
   if (code === "consignment_overview.product_summary.view") return "📦";
   if (code === "vat_return.receipt") return "💳";
-  if (code === "local_purchase.price_history") return "📜";
+  if (code === "local_purchase.price_history" || code === "product_price.trade_history") return "📜";
+  if (code === "productgallery.products.view") return "📦";
+  if (code === "productgallery.suppliers.view") return "🏭";
+  if (code === "productgallery.quotations.view") return "📄";
+  if (code === "stock_movement.inward.view") return "📥";
+  if (code === "stock_movement.outward.view") return "📤";
+  if (code === "stock_movement.ledger.view") return "📊";
   const parts = code.split(".");
   const action = parts[parts.length - 1];
   return ACTION_ICONS[action] || "🔹";

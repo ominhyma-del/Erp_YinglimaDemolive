@@ -10,7 +10,7 @@
 
 > **Strict Policy:** When developing or modifying features, no existing module, form, or field listed in this document may be removed, broken, or regressed.  
 
-> **Last Updated:** September 16, 2026 (Added End-to-End Granular RBAC Permissions for Inquiries, Product Prices & Local Purchases) (Synchronized with Version 1.1.0 & Local Purchases Domestic Procurement Engine, Universal Live Duplicate Blockers & 100% Fluid Layout Standard)
+> **Last Updated:** November 19, 2026 (Upgraded all data-fetched dropdowns across Local Purchases, Sale Process, Product Prices, Inquiries, Effective Permissions, and Departments & Permissions to searchable `SelectField` menus; left small hardcoded static dropdowns unchanged)
 
 
 
@@ -4805,6 +4805,14 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
    - Click `Export` in the top-right header -> verify a 4-sheet `.xlsx` workbook (`Financial Summary`, `Local Purchase (Suppliers)`, `Sales & Agent Schedule`, `Payment Transactions`) downloads cleanly.
 6. **6-KPI Card Active Border & Stage Filter Sync (`handleKpiSelect`)**:
    - Click each of the 6 KPI summary cards (`LOCAL PURCHASE — ALL`, `LOCAL PURCHASE — PAID`, `LOCAL PURCHASE — BALANCE`, `SALES PROCESS — ALL`, `SALES PROCESS — RECEIVED`, `SALES PROCESS — BALANCE`) -> verify the blue active border (`1.5px solid #3b82f6`) moves to the exact KPI card clicked and the table below switches to the matching section and stage (`All`, `Cleared`, `Pending`).
+7. **Top Filter Searchable Dropdowns (`Filter` -> `Party (Supplier / Buyer)` & `Consignment Code`)**:
+   - Click `Filter` to open `Filter Options`.
+   - Open **Party (Supplier / Buyer)** -> verify options are grouped under a bold **`SUPPLIERS`** header followed by suppliers, and a bold **`BUYERS`** header followed by buyers, and typing filters across both groups.
+   - Open **Consignment Code** -> verify consignment codes are listed and searchable, and selecting either filter updates the KPI cards and table rows (clearing with `✕` or `Reset Filters` restores all records).
+8. **Dynamic Payment Modes / Bank Accounts Master (`Settings → Masters → Payment Modes` & `Record Payment Installment`)**:
+   - Open **Settings → Masters → Payment Modes** (`/masters/payment-modes`) -> verify the 7 seeded payment modes (`RMB A/C`, `USD Transaction A/C`, `USD Capital A/C`, `TT / Wire Transfer`, `Alipay / WeChat Pay`, `Cash`, `Other Bank A/C`) are listed.
+   - Create a new active payment mode (e.g. `ICBC RMB A/C`), then open **Financial Report → `⋮` → Add Payment** -> verify `ICBC RMB A/C` appears in the **Payment Mode / Bank Account** dropdown (and disappears if deactivated).
+   - Verify **Departments & Permissions** includes **Payment Modes / Bank Accounts** (`payment_mode.*`) and gates `/masters/payment-modes` and CRUD actions properly.
 
 
 ### Test Case LP-BILL-01: Local Purchase Bill PDF Upload & Edit Persistence in Supabase Storage
@@ -4891,3 +4899,11 @@ A standardized suite of 8 production-grade Excel (`.xlsx`) files is maintained d
    - Keep **User D** open in one browser tab and edit User D's permissions or department permissions in an Admin tab -> verify User D's sidebar and action buttons update automatically within ~1 second without refreshing the page.
 7. **Local Purchase Price History Permission (`local_purchase.price_history`):**
    - Grant a user **Local Purchase → View Price History** (`local_purchase.price_history`) without `product_price.view` -> verify `/purchase/local/new` shows the `📜 History` button and opens the **Trade & Price History** drawer cleanly while **Product Prices** stays hidden in the sidebar; unchecking it hides the button.
+8. **Product Prices Sub-Table Order Preservation:**
+   - Expand a product in `/inventory/product-prices` that already has Supplier A (e.g., ¥100), then add Supplier B with a lower quote (e.g., ¥88, without `Set as Preferred`) -> verify Supplier A stays in row 1 and Supplier B stays below it with the green **`LOWEST`** badge (and stays in that order after page refresh).
+9. **Product Prices Trade History Permission (`product_price.trade_history`):**
+   - Grant a user `product_price.view` without `product_price.trade_history` -> verify `/inventory/product-prices` hides `📜 History`, `📜 Full Trade History`, and `📜 View Trade & Price History`; checking `View Trade History` restores all three buttons and loads the drawer.
+10. **Product Gallery Granular Section & Delete Permissions (`productgallery.*`):**
+   - Grant a user only `productgallery.products.view` (without `suppliers.view`, `quotations.view`, or `delete`) -> verify **Product Gallery** appears in the sidebar, shows only **Product Photos**, and hides Supplier Visit Photos, Quotation Docs, and delete buttons; toggling `Delete Photos / Media` (`productgallery.delete`) enables media deletion without needing `product.update` or `supplier.update`.
+11. **Stock Movement 3-Tab View Permissions (`stock_movement.*`):**
+   - Grant a user only `stock_movement.inward.view` -> verify **Stock Movement** appears in the sidebar, shows only **Inward Register** (hiding **Outward Register** and **Current Stock Ledger**), and `GET /stock/movements?movement_type=outward` / `GET /stock/balances` return `403`.

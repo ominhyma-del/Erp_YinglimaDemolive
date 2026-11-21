@@ -120,7 +120,7 @@ async def list_brands(
     request: Request,
     query: ListQueryParams = Depends(get_list_query_params),
     service: BrandService = Depends(get_brand_service),
-    _current_user: CurrentUser = Depends(require_any_permission("brand.view", "product.view", "product.create", "product.update", "productgallery.view", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update")),
+    _current_user: CurrentUser = Depends(require_any_permission("brand.view", "product.view", "product.create", "product.update", "productgallery.products.view", "productgallery.suppliers.view", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update")),
 ) -> dict:
     """List brands, with search/sort/filter/pagination."""
     brands, total = await service.list_paginated(query)

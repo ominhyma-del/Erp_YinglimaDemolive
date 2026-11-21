@@ -142,6 +142,14 @@ BOOTSTRAP_PERMISSIONS: list[tuple[str, str, str, str, str, str]] = [
     ("buyertype.export", "buyertype", "buyer-types", "export", "ALL", "Export buyer type data."),
     ("buyertype.import", "buyertype", "buyer-types", "import", "ALL", "Import buyer type data."),
     ("buyertype.bulk_action", "buyertype", "buyer-types", "manage", "ALL", "Use Bulk Actions in the buyer type list."),
+    # Payment Modes / Bank Accounts (Configurations master)
+    ("payment_mode.view", "payment_mode", "masters-payment-modes", "view", "ALL", "View payment modes & bank accounts; use search, filters, and the Active/Inactive tabs."),
+    ("payment_mode.create", "payment_mode", "masters-payment-modes", "create", "ALL", "Create payment modes & bank accounts."),
+    ("payment_mode.update", "payment_mode", "masters-payment-modes", "update", "ALL", "Edit and activate/deactivate payment modes & bank accounts."),
+    ("payment_mode.delete", "payment_mode", "masters-payment-modes", "delete", "ALL", "Delete payment modes & bank accounts."),
+    ("payment_mode.export", "payment_mode", "masters-payment-modes", "export", "ALL", "Export payment mode & bank account data."),
+    ("payment_mode.import", "payment_mode", "masters-payment-modes", "import", "ALL", "Import payment mode & bank account data."),
+    ("payment_mode.bulk_action", "payment_mode", "masters-payment-modes", "manage", "ALL", "Use Bulk Actions in the payment modes list."),
     # Master Data Configurations
     ("country.view", "country", "masters-countries", "view", "ALL", "View countries."),
     ("country.create", "country", "masters-countries", "create", "ALL", "Create countries."),
@@ -214,12 +222,11 @@ BOOTSTRAP_PERMISSIONS: list[tuple[str, str, str, str, str, str]] = [
     ("product.export", "product", "masters-products", "export", "ALL", "Export product records."),
     ("product.import", "product", "masters-products", "import", "ALL", "Import product records."),
     ("product.bulk_action", "product", "masters-products", "manage", "ALL", "Use Bulk Actions in the Product Master list."),
-    # Product Gallery (Inventory > Product Gallery; separate page from Product
-    # Master above). Deliberately view-only: this page has no create/edit/
-    # delete/bulk actions of its own to gate (the two photo-delete buttons it
-    # does have are already separately gated on product.update /
-    # supplier.update).
-    ("productgallery.view", "productgallery", "product-gallery", "view", "ALL", "View the Product & Supplier Gallery."),
+    # Product Gallery (Inventory > Product Gallery; separate page from Product Master above).
+    ("productgallery.products.view", "productgallery", "product-gallery", "view", "ALL", "View Product Master photos tab in Product Gallery."),
+    ("productgallery.suppliers.view", "productgallery", "product-gallery", "view", "ALL", "View Supplier Visit photos and videos tab in Product Gallery."),
+    ("productgallery.quotations.view", "productgallery", "product-gallery", "view", "ALL", "View Quotation Documents tab in Product Gallery."),
+    ("productgallery.delete", "productgallery", "product-gallery", "delete", "ALL", "Delete photos and media from Product Gallery."),
     # Audit Log
     ("audit.view", "audit", "audit", "view", "ALL", "View audit log entries."),
     # Shipment Planning (dynamic branch-sheet grid: Mum Branch, MP Branch, ...)
@@ -239,10 +246,9 @@ BOOTSTRAP_PERMISSIONS: list[tuple[str, str, str, str, str, str]] = [
     ("sale_process.delete", "sale_process", "sales", "delete", "ALL", "Delete or cancel sale orders."),
     ("sale_process.export", "sale_process", "sales", "export", "ALL", "Export sale orders to Excel and download Commercial Invoice & Packing List."),
     # Stock Movements
-    ("stock_movement.view", "stock_movement", "stock-movement", "view", "ALL", "View stock movements, live balances, and Kardex ledgers."),
-    ("stock_movement.create", "stock_movement", "stock-movement", "create", "ALL", "Create inward receipts and outward dispatches."),
-    ("stock_movement.cancel", "stock_movement", "stock-movement", "update", "ALL", "Cancel or reverse stock movements."),
-    ("stock_movement.delete", "stock_movement", "stock-movement", "delete", "ALL", "Delete stock movement records."),
+    ("stock_movement.inward.view", "stock_movement", "stock-movement", "view", "ALL", "View Inward Register tab in Stock Movement."),
+    ("stock_movement.outward.view", "stock_movement", "stock-movement", "view", "ALL", "View Outward Register tab in Stock Movement."),
+    ("stock_movement.ledger.view", "stock_movement", "stock-movement", "view", "ALL", "View Current Stock Ledger & Product Kardex in Stock Movement."),
     # Notification Rules
     ("notification_settings.view", "notification_settings", "notification-settings", "view", "ALL", "View notification trigger rules and mapped recipients."),
     ("notification_settings.manage", "notification_settings", "notification-settings", "manage", "ALL", "Configure and update notification rules and recipient mappings."),
@@ -262,6 +268,7 @@ BOOTSTRAP_PERMISSIONS: list[tuple[str, str, str, str, str, str]] = [
     ("product_price.delete", "product_price", "product_prices", "delete", "ALL", "Delete product price records."),
     ("product_price.export", "product_price", "product_prices", "export", "ALL", "Export product prices catalog to Excel/CSV."),
     ("product_price.import", "product_price", "product_prices", "import", "ALL", "Bulk import product price lists."),
+    ("product_price.trade_history", "product_price", "product_prices", "view", "ALL", "View Trade & Price History drawer in Product Prices."),
     # Local Purchase Orders
     ("local_purchase.view", "local_purchase", "local_purchases", "view", "ALL", "View local purchase orders list and detail modal."),
     ("local_purchase.create", "local_purchase", "local_purchases", "create", "ALL", "Create new local purchase orders."),
@@ -332,7 +339,9 @@ USER_ROLE_PERMISSION_CODES: list[str] = [
     "local_purchase.view",
     "planning.view",
     "sale_process.view",
-    "stock_movement.view",
+    "stock_movement.inward.view",
+    "stock_movement.outward.view",
+    "stock_movement.ledger.view",
     "finance_report.view",
     "consignment_overview.view",
     "vat_return.view",
@@ -384,12 +393,20 @@ async def seed_with_session(session) -> None:
     # Clean up retired permissions that are no longer part of the RBAC matrix.
     from sqlalchemy import delete as _sa_delete
     from app.rbac.models import RolePermission, UserPermission
-    retired_perm = await permission_repo.get_by_code("planning.row.manage")
-    if retired_perm is not None:
-        await session.execute(_sa_delete(RolePermission).where(RolePermission.permission_id == retired_perm.id))
-        await session.execute(_sa_delete(UserPermission).where(UserPermission.permission_id == retired_perm.id))
-        await session.delete(retired_perm)
-        await session.flush()
+    for retired_code in (
+        "planning.row.manage",
+        "productgallery.view",
+        "stock_movement.view",
+        "stock_movement.create",
+        "stock_movement.cancel",
+        "stock_movement.delete",
+    ):
+        retired_perm = await permission_repo.get_by_code(retired_code)
+        if retired_perm is not None:
+            await session.execute(_sa_delete(RolePermission).where(RolePermission.permission_id == retired_perm.id))
+            await session.execute(_sa_delete(UserPermission).where(UserPermission.permission_id == retired_perm.id))
+            await session.delete(retired_perm)
+            await session.flush()
 
     created_permissions: list[Permission] = []
     for code, module, page, action, scope, description in BOOTSTRAP_PERMISSIONS:
@@ -545,6 +562,27 @@ async def seed_with_session(session) -> None:
         await _geo.seed_china(session)
     else:
         logger.info("Country master data already present; geography seed skipped.")
+
+    # Seed default Payment Modes / Bank Accounts if table is empty
+    from app.core.constants import RecordStatus as _RecordStatus
+    from app.masters.payment_modes.constants import DEFAULT_PAYMENT_MODES
+    from app.masters.payment_modes.models import PaymentMode
+
+    _pm_rows = (await session.scalar(select(_func.count()).select_from(PaymentMode))) or 0
+    if _pm_rows == 0:
+        for pm_name, pm_code, pm_type, pm_curr, pm_desc in DEFAULT_PAYMENT_MODES:
+            session.add(
+                PaymentMode(
+                    name=pm_name,
+                    code=pm_code,
+                    account_type=pm_type,
+                    currency_code=pm_curr,
+                    description=pm_desc,
+                    status=_RecordStatus.ACTIVE,
+                )
+            )
+        await session.flush()
+        logger.info("Seeded default Payment Modes / Bank Accounts.")
 
 
 async def _run_seed_with_retry(max_retries: int = 5, delay: float = 2.0) -> None:

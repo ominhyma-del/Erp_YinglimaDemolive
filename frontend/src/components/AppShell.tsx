@@ -650,7 +650,9 @@ function Sidebar({
           .filter((item) => {
             if (item.children) return item.children.length > 0;
             if (item.superAdminOnly && !isSuperAdmin) return false;
-            return !item.permission || hasPermission(item.permission);
+            if (item.permission && !hasPermission(item.permission)) return false;
+            if (item.anyPermissions && !item.anyPermissions.some((p) => hasPermission(p))) return false;
+            return true;
           }),
       })).filter((section) => section.items.length > 0),
     [isSuperAdmin, hasPermission]
@@ -1440,7 +1442,9 @@ export function AppShell({ activeKey, children, pageClassName }: AppShellProps) 
   const navItem = NAV_ITEMS_BY_KEY[activeKey];
   if (navItem && activeKey !== "403") {
     const deniedBySuperAdmin = navItem.superAdminOnly && !isSuperAdmin;
-    const deniedByPermission = navItem.permission && !hasPermission(navItem.permission);
+    const deniedByPermission =
+      (navItem.permission && !hasPermission(navItem.permission)) ||
+      (navItem.anyPermissions && !navItem.anyPermissions.some((p) => hasPermission(p)));
     if (deniedBySuperAdmin || deniedByPermission) {
       const moduleName = PAGE_TITLES[activeKey] || activeKey;
       return <Navigate to={`/403?module=${encodeURIComponent(moduleName)}`} replace />;

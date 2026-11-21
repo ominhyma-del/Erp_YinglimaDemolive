@@ -229,7 +229,7 @@ async def list_suppliers(
     sub_category_id: uuid.UUID | None = None,
     product_id: uuid.UUID | None = None,
     service: SupplierService = Depends(get_supplier_service),
-    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.view", "stock_movement.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
+    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.suppliers.view", "stock_movement.inward.view", "stock_movement.outward.view", "stock_movement.ledger.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
     cache_manager: CacheManager = Depends(get_cache_manager),
 ) -> dict:
     """
@@ -331,7 +331,7 @@ async def get_suppliers_lookup(
     request: Request,
     search: str | None = None,
     service: SupplierService = Depends(get_supplier_service),
-    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.view", "stock_movement.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
+    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.suppliers.view", "stock_movement.inward.view", "stock_movement.outward.view", "stock_movement.ledger.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
 ) -> dict:
     """Return lightweight list of active suppliers {id, company_name, brand_description, supplier_type}."""
     suppliers = await service.list_suppliers_lookup(search=search)
@@ -343,7 +343,7 @@ async def get_supplier(
     supplier_id: uuid.UUID,
     request: Request,
     service: SupplierService = Depends(get_supplier_service),
-    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.view", "stock_movement.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
+    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.suppliers.view", "stock_movement.inward.view", "stock_movement.outward.view", "stock_movement.ledger.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
 ) -> dict:
     """Fetch a single supplier profile by ID, including contacts, emails, and category links."""
     supplier = await service.get_by_id_or_raise(supplier_id)
@@ -357,13 +357,18 @@ async def update_supplier(
     payload: SupplierUpdate,
     request: Request,
     service: SupplierService = Depends(get_supplier_service),
-    current_user: CurrentUser = Depends(require_permission("supplier.update")),
+    current_user: CurrentUser = Depends(require_any_permission("supplier.update", "productgallery.delete")),
     audit_service: AuditService = Depends(get_audit_service),
     db: AsyncSession = Depends(get_db_session),
     dispatcher: EventDispatcher = Depends(get_event_dispatcher),
 ) -> dict:
     """Update an existing supplier profile."""
-    supplier = await service.update(supplier_id, **payload.model_dump(exclude_unset=True))
+    patch_data = payload.model_dump(exclude_unset=True)
+    if "supplier.update" not in current_user.permissions:
+        if not set(patch_data.keys()).issubset({"visit_photos", "visit_videos", "visit_photo_url", "visit_video_url"}):
+            from app.core.exceptions import ForbiddenException
+            raise ForbiddenException("This action requires the 'supplier.update' permission.")
+    supplier = await service.update(supplier_id, **patch_data)
     data = await _to_supplier_read(service, supplier)
     changes = payload.model_dump(exclude_none=True, exclude={"version"}, mode="json")
     await _record_action(
@@ -641,7 +646,7 @@ async def list_supplier_contacts(
     supplier_id: uuid.UUID,
     request: Request,
     service: SupplierService = Depends(get_supplier_service),
-    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.view", "stock_movement.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
+    _current_user: CurrentUser = Depends(require_any_permission("supplier.view", "product.view", "product.create", "product.update", "inquiry.view", "inquiry.create", "inquiry.update", "local_purchase.view", "local_purchase.create", "local_purchase.update", "planning.view", "product_price.view", "productgallery.suppliers.view", "stock_movement.inward.view", "stock_movement.outward.view", "stock_movement.ledger.view", "finance_report.view", "consignment_overview.view", "vat_return.view")),
 ) -> dict:
     """List every contact person for a supplier ("Add Contacts List")."""
     await service.get_by_id_or_raise(supplier_id)
